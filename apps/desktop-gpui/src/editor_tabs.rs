@@ -36,7 +36,7 @@ use serde_json::Value;
 
 use crate::{
     editor_color::GradeTarget,
-    editor_sidebar::{SliderKey, collapsible},
+    editor_sidebar::{PadKey, SliderKey, collapsible},
     editor_window::EditorWindow,
     i18n::tr,
     store,
@@ -2094,6 +2094,7 @@ impl EditorWindow {
         }
 
         let split = self.camera_uses_split_layout();
+        let picture_in_picture = self.camera_uses_picture_in_picture();
         let layout = self.sidebar.style_target.is_none()
             && self.summary().is_some_and(|summary| summary.has_camera);
         div()
@@ -2107,7 +2108,9 @@ impl EditorWindow {
             .when(!split, |column| {
                 column
                     .child(self.render_camera_framing_controls(cx))
-                    .child(self.render_camera_position(cx))
+                    .when(picture_in_picture, |column| {
+                        column.child(self.render_camera_position(cx))
+                    })
                     .child(self.slider_field(
                         tr::editor::tabs::camera::size_label(),
                         SliderKey::Camera(CameraSlider::Size),
@@ -2136,7 +2139,7 @@ impl EditorWindow {
                         cx,
                     ))
             })
-            .children(manual.filter(|_| !split).map(|_| {
+            .children(manual.filter(|_| picture_in_picture).map(|_| {
                 div()
                     .flex()
                     .flex_row()
@@ -2263,13 +2266,10 @@ impl EditorWindow {
             .into_any_element()
     }
 
-    /// The six camera spots as a small canvas-shaped pad: each third of a
-    /// row is one target, with its dot pinned toward the matching edge.
     fn render_camera_position(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
-        let camera = &self.project.camera;
-        // A camera dragged on the canvas has a manual position and none of the
-        // six dots match (`:2982-2987`).
+        let project = self.style_control_project();
+        let camera = &project.camera;
         let selected = camera.manual_position.is_none();
         let x_index = match camera.position.x {
             CameraXPosition::Left => 0usize,
@@ -2283,6 +2283,18 @@ impl EditorWindow {
         let accent = Hsla::from(theme.editor.accent);
         let idle = Hsla::from(theme.editor.text_3);
         let hover = Hsla::from(theme.editor.ctl_hover);
+        let positions = [
+            [
+                tr::editor::tabs::position::top_left(),
+                tr::editor::tabs::position::top_center(),
+                tr::editor::tabs::position::top_right(),
+            ],
+            [
+                tr::editor::tabs::position::bottom_left(),
+                tr::editor::tabs::position::bottom_center(),
+                tr::editor::tabs::position::bottom_right(),
+            ],
+        ];
 
         let mut pad = div()
             .w(px(120.))
@@ -2295,9 +2307,9 @@ impl EditorWindow {
             .border_1()
             .border_color(Hsla::from(theme.editor.line))
             .bg(Hsla::from(theme.editor.ctl));
-        for item_y in 0..2usize {
+        for (item_y, labels) in positions.into_iter().enumerate() {
             let mut row = div().flex_1().flex().flex_row();
-            for item_x in 0..3usize {
+            for (item_x, label) in labels.into_iter().enumerate() {
                 let checked = selected && x_index == item_x && y_index == item_y;
                 let cell = div()
                     .id(SharedString::from(format!(
@@ -2308,6 +2320,9 @@ impl EditorWindow {
                     .p(px(5.))
                     .rounded(px(5.))
                     .cursor_pointer()
+                    .role(gpui::Role::Button)
+                    .aria_label(label)
+                    .tooltip(move |_, cx| ui::Tooltip::new(&theme, label).view(cx))
                     .hover(move |this| this.bg(hover))
                     .map(|cell| match item_x {
                         0 => cell.justify_start(),
@@ -2342,7 +2357,6 @@ impl EditorWindow {
                                     CameraYPosition::Bottom
                                 },
                             };
-                            // The batch clears the manual override too (`:3011-3016`).
                             project.camera.manual_position = None;
                             true
                         });
@@ -2352,18 +2366,15 @@ impl EditorWindow {
             pad = pad.child(row);
         }
 
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
+        ui::Field::stacked(&theme, tr::editor::tabs::camera::position())
             .child(
                 div()
-                    .text_size(px(13.))
-                    .text_color(Hsla::from(theme.editor.text_1))
-                    .child(tr::editor::tabs::camera::position()),
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(self.render_pad(PadKey::CameraPictureInPicture, cx))
+                    .child(div().flex().justify_end().child(pad)),
             )
-            .child(pad)
             .into_any_element()
     }
 

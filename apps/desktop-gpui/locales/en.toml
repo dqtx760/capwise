@@ -3110,6 +3110,8 @@ set_default = "Set as default"
 full = { text = "Full", context = "Preview quality option." }
 half = { text = "Half", context = "Preview quality option." }
 quarter = { text = "Quarter", context = "Preview quality option." }
+fullscreen_playback = "Full screen"
+exit_fullscreen_playback = "Exit full screen"
 
 [editor.window.text_menu]
 copy_style = "Copy style"

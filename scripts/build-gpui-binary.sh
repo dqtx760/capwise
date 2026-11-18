@@ -43,6 +43,11 @@ if [[ "$target" == *windows* ]]; then
 	extension=".exe"
 fi
 
+if [[ "$target" == *-pc-windows-msvc ]]; then
+	# cmake-rs drops the native Release optimization flags when it chooses MSVC implicitly.
+	export CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+fi
+
 node "$repo_root/scripts/sync-desktop-versions.mjs"
 "$repo_root/scripts/prepare-gpui-dependency.sh"
 

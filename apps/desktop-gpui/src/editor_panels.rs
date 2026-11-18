@@ -4291,6 +4291,16 @@ impl EditorWindow {
         cx: &mut Context<Self>,
     ) {
         match key {
+            PadKey::CameraPictureInPicture => {
+                let position = Some(XY::new(x, y));
+                self.edit_project_without_timeline("camera-position", window, cx, move |project| {
+                    if project.camera.manual_position == position {
+                        return false;
+                    }
+                    project.camera.manual_position = position;
+                    true
+                });
+            }
             PadKey::SceneScreen(index) | PadKey::SceneCamera(index) => {
                 let screen = matches!(key, PadKey::SceneScreen(_));
                 self.edit_scene_segment("scene-position", index, window, cx, move |segment| {
@@ -4361,14 +4371,28 @@ impl EditorWindow {
     }
 
     fn pad_value(&self, key: PadKey) -> (f64, f64) {
-        let Some(timeline) = self.timeline() else {
-            return (0.5, 0.5);
-        };
+        let timeline = self.timeline();
         match key {
+            PadKey::CameraPictureInPicture => {
+                let project = self.style_control_project();
+                let camera = &project.camera;
+                if let Some(position) = camera.manual_position {
+                    return (position.x, position.y);
+                }
+                let x = match camera.position.x {
+                    cap_project::CameraXPosition::Left => 0.1,
+                    cap_project::CameraXPosition::Center => 0.5,
+                    cap_project::CameraXPosition::Right => 0.9,
+                };
+                let y = match camera.position.y {
+                    cap_project::CameraYPosition::Top => 0.1,
+                    cap_project::CameraYPosition::Bottom => 0.9,
+                };
+                (x, y)
+            }
             PadKey::SceneScreen(index) | PadKey::SceneCamera(index) => {
                 let split = timeline
-                    .scene_segments
-                    .get(index)
+                    .and_then(|timeline| timeline.scene_segments.get(index))
                     .and_then(|segment| segment.split_layout)
                     .unwrap_or_default();
                 let point = if matches!(key, PadKey::SceneScreen(_)) {
@@ -4378,15 +4402,17 @@ impl EditorWindow {
                 };
                 (point.x, point.y)
             }
-            PadKey::ZoomManual(index) => match timeline.zoom_segments.get(index).map(|s| &s.mode) {
+            PadKey::ZoomManual(index) => match timeline
+                .and_then(|timeline| timeline.zoom_segments.get(index))
+                .map(|s| &s.mode)
+            {
                 Some(ZoomMode::Manual { x, y }) => (f64::from(*x), f64::from(*y)),
                 _ => (0.5, 0.5),
             },
             // The orbit pad draws its own dot from the pose being edited; this
             // is only the value the shared drag layer reads back.
             PadKey::Camera3DOrbit(index) => timeline
-                .camera3d_segments
-                .get(index)
+                .and_then(|timeline| timeline.camera3d_segments.get(index))
                 .map(|segment| {
                     let pose = if self.sidebar.editing_end_pose {
                         end_pose(segment)
@@ -4402,7 +4428,9 @@ impl EditorWindow {
                 let positions: Vec<(f64, f64)> = self
                     .zoom_selection_indices()
                     .iter()
-                    .filter_map(|index| timeline.zoom_segments.get(*index))
+                    .filter_map(|index| {
+                        timeline.and_then(|timeline| timeline.zoom_segments.get(*index))
+                    })
                     .map(|segment| match &segment.mode {
                         ZoomMode::Manual { x, y } => (f64::from(*x), f64::from(*y)),
                         ZoomMode::Auto => (0.5, 0.5),
@@ -4420,7 +4448,7 @@ impl EditorWindow {
         }
     }
 
-    fn render_pad(&self, key: PadKey, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_pad(&self, key: PadKey, cx: &mut Context<Self>) -> AnyElement {
         let (x, y) = self.pad_value(key);
         ui::PositionPad::plain(
             &self.theme,

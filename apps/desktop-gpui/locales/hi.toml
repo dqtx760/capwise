@@ -3068,6 +3068,8 @@ set_default = "डिफ़ॉल्ट बनाएँ"
 full = "पूरा"
 half = "आधा"
 quarter = "एक-चौथाई"
+fullscreen_playback = "पूर्ण स्क्रीन"
+exit_fullscreen_playback = "पूर्ण स्क्रीन से बाहर निकलें"
 
 [editor.window.text_menu]
 copy_style = "स्टाइल कॉपी करें"

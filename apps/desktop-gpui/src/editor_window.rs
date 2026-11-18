@@ -304,8 +304,12 @@ use crate::editor_timeline::{
 ///
 /// Returns the on-screen size of the frame, in logical pixels.
 pub fn letterbox(container: (f32, f32), frame: (f32, f32)) -> (f32, f32) {
-    let available_width = (container.0 - PLAYER_CANVAS_PADDING * 2.).max(0.);
-    let available_height = (container.1 - PLAYER_CANVAS_PADDING * 2.).max(0.);
+    fit_preview_frame(container, frame, PLAYER_CANVAS_PADDING)
+}
+
+fn fit_preview_frame(container: (f32, f32), frame: (f32, f32), padding: f32) -> (f32, f32) {
+    let available_width = (container.0 - padding * 2.).max(0.);
+    let available_height = (container.1 - padding * 2.).max(0.);
 
     let container_aspect = if available_width == 0. || available_height == 0. {
         1.
@@ -703,11 +707,7 @@ impl EditorPreviewFrame {
 /// The stage's rounded preview: radius and the hairline ring around it.
 const PREVIEW_RADIUS: f32 = 6.;
 
-/// The breathing room between the fitted frame and the card. [`letterbox`] --
-/// which the crop dialog shares -- already eats `PLAYER_CANVAS_PADDING`, so the
-/// stage only has to inset the remainder before fitting.
 const PLAYER_STAGE_PADDING: f32 = 16.;
-const STAGE_INSET: f32 = PLAYER_STAGE_PADDING - PLAYER_CANVAS_PADDING;
 
 struct PreviewFrameView {
     frame: Option<EditorPreviewFrame>,
@@ -715,6 +715,7 @@ struct PreviewFrameView {
     frame_rect: crate::editor_canvas::CanvasRect,
     stats: Option<Arc<PumpStats>>,
     frame_sequence: u64,
+    fullscreen: bool,
     /// The stage's lift under the preview. A canvas paints raw quads, so the
     /// shadow cannot come from a style and is carried here instead.
     shadow: Vec<gpui::BoxShadow>,
@@ -728,6 +729,7 @@ impl PreviewFrameView {
             frame_rect,
             stats: None,
             frame_sequence: 0,
+            fullscreen: false,
             shadow: crate::theme::preview_shadow(),
         }
     }
@@ -758,18 +760,17 @@ impl Render for PreviewFrameView {
         let painted = self.stats.clone();
         let frame_sequence = self.frame_sequence;
         let shadow = self.shadow.clone();
+        let fullscreen = self.fullscreen;
 
         gpui::canvas(
             |bounds, _window, _cx| bounds,
             move |_, bounds, window, _cx| {
                 let container_width: f32 = bounds.size.width.into();
                 let container_height: f32 = bounds.size.height.into();
-                let (width, height) = letterbox(
-                    (
-                        (container_width - STAGE_INSET * 2.).max(0.),
-                        (container_height - STAGE_INSET * 2.).max(0.),
-                    ),
+                let (width, height) = fit_preview_frame(
+                    (container_width, container_height),
                     frame_size,
+                    if fullscreen { 0. } else { PLAYER_STAGE_PADDING },
                 );
                 let fitted = gpui::Bounds {
                     origin: gpui::point(
@@ -782,18 +783,22 @@ impl Render for PreviewFrameView {
                     container: bounds,
                     frame: fitted,
                 }));
-                let radius = px(PREVIEW_RADIUS);
-                window.paint_drop_shadows(fitted, gpui::Corners::all(radius), &shadow);
-                window.paint_quad(gpui::fill(fitted, gpui::black()).corner_radii(radius));
-                frame.paint(fitted, radius, window);
-                window.paint_quad(gpui::quad(
-                    fitted,
-                    gpui::Corners::all(radius),
-                    gpui::transparent_black(),
-                    gpui::Edges::all(px(1.)),
-                    gpui::hsla(0., 0., 0., 0.12),
-                    gpui::BorderStyle::Solid,
-                ));
+                if fullscreen {
+                    frame.paint(fitted, px(0.), window);
+                } else {
+                    let radius = px(PREVIEW_RADIUS);
+                    window.paint_drop_shadows(fitted, gpui::Corners::all(radius), &shadow);
+                    window.paint_quad(gpui::fill(fitted, gpui::black()).corner_radii(radius));
+                    frame.paint(fitted, radius, window);
+                    window.paint_quad(gpui::quad(
+                        fitted,
+                        gpui::Corners::all(radius),
+                        gpui::transparent_black(),
+                        gpui::Edges::all(px(1.)),
+                        gpui::hsla(0., 0., 0., 0.12),
+                        gpui::BorderStyle::Solid,
+                    ));
+                }
                 if let Some(stats) = &painted {
                     stats.record_paint(frame_sequence);
                 }
@@ -842,7 +847,13 @@ impl Render for EditorSectionView {
                 EditorSection::Toolbar => {
                     editor.render_player_toolbar(window, cx).into_any_element()
                 }
-                EditorSection::Transport => editor.render_transport(window, cx).into_any_element(),
+                EditorSection::Transport => {
+                    if editor.fullscreen_playback_restore_windowed.is_some() {
+                        editor.render_fullscreen_transport(cx).into_any_element()
+                    } else {
+                        editor.render_transport(window, cx).into_any_element()
+                    }
+                }
                 // The Clips layout mode swaps the config sidebar's column for the
                 // clips sidebar; the config sidebar is hidden, not destroyed
                 // (`Editor.tsx:728-747`).
@@ -1376,15 +1387,13 @@ enum DragKind {
         kind: cap_project::ClipTransitionType,
         from_body: bool,
     },
-    /// `TL/ZoomTrack.tsx:188-295`: a press on bare zoom track, which becomes a
-    /// segment either on the first move (dragged to length) or on release
-    /// (the default one-`minDuration` box).
     CreateZoom {
         base_start: f64,
         base_end: f64,
         max: f64,
         min_duration: f64,
         created: Option<usize>,
+        create_on_click: bool,
     },
 }
 
@@ -1706,6 +1715,7 @@ pub struct EditorWindow {
     redaction_tool: overlay_shortcuts::RedactionTool,
 
     preview_quality: crate::store::EditorPreviewQuality,
+    fullscreen_playback_restore_windowed: Option<bool>,
     /// The automatic preview scale (see [`auto_preview_scale`]).
     preview_scale: f32,
     /// The viewport size and scale factor the last render saw.
@@ -2434,6 +2444,7 @@ impl EditorWindow {
             // The control is hidden and `preview_scale` follows the canvas,
             // so an older stored choice (say 1/4) is ignored.
             preview_quality: crate::store::EditorPreviewQuality::Half,
+            fullscreen_playback_restore_windowed: None,
             preview_scale: crate::store::EditorPreviewQuality::Half.scale(),
             preview_scale_viewport: (0., 0., 0.),
             preview_scale_task: None,
@@ -5588,9 +5599,8 @@ impl EditorWindow {
     }
 
     /// A press on a track row. Whatever it lands on decides everything:
-    /// a handle trims, a body moves (or splits, in split mode), and bare track
-    /// falls through to the timeline container's own press-to-seek -- except on
-    /// the zoom track, which creates a segment there.
+    /// a handle trims, a body moves (or splits, in split mode), and a
+    /// click on bare track falls through to the timeline container's seek.
     fn track_mouse_down(
         &mut self,
         kind: TrackKind,
@@ -5651,14 +5661,21 @@ impl EditorWindow {
         let index = match hit {
             Hit::Empty => {
                 if matches!(kind, TrackKind::Zoom | TrackKind::ThreeD) {
-                    self.begin_gap_create(
-                        kind,
-                        secs_per_pixel,
-                        f32::from(event.position.x),
-                        viewport_width,
-                        window,
-                        cx,
-                    );
+                    if kind != TrackKind::Zoom || !self.generating_auto_zoom {
+                        self.begin_gap_create(
+                            kind,
+                            secs_per_pixel,
+                            event,
+                            viewport_width,
+                            window,
+                            cx,
+                        );
+                        if event.click_count == 2 && self.drag.is_some() {
+                            cx.stop_propagation();
+                        }
+                    }
+                } else if event.click_count != 2 {
+                    return;
                 } else if kind == TrackKind::Image {
                     cx.stop_propagation();
                     self.import_image_for_lane(lane, press_time, window, cx);
@@ -5671,12 +5688,10 @@ impl EditorWindow {
                 } else if kind == TrackKind::Caption && self.timeline.segments(kind).is_empty() {
                     cx.stop_propagation();
                     self.open_captions_settings(window, cx);
-                } else if event.click_count == 2
-                    && matches!(
-                        kind,
-                        TrackKind::Text | TrackKind::Shape | TrackKind::Mask | TrackKind::Scene
-                    )
-                {
+                } else if matches!(
+                    kind,
+                    TrackKind::Text | TrackKind::Shape | TrackKind::Mask | TrackKind::Scene
+                ) {
                     cx.stop_propagation();
                     let time = if kind == TrackKind::Scene {
                         let Some(time) = timeline::preview_time_from_x(
@@ -6253,11 +6268,13 @@ impl EditorWindow {
         &mut self,
         kind: TrackKind,
         secs_per_pixel: f64,
-        down_x: f32,
+        event: &MouseDownEvent,
         viewport_width: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let down_x = f32::from(event.position.x);
+        let create_on_click = event.click_count == 2;
         let ghost = timeline::preview_time_from_x(down_x, viewport_width, self.view.transform)
             .and_then(|preview| {
                 // The 3D lane's ghost is a four-second shot, not a
@@ -6270,7 +6287,7 @@ impl EditorWindow {
                 .map(|ghost| (preview, ghost))
             });
         let Some((preview, (start, end))) = ghost else {
-            if kind == TrackKind::ThreeD {
+            if kind == TrackKind::ThreeD && create_on_click {
                 self.show_notice(tr::editor::window::no_room_for_3d_shot(), window, cx);
             }
             return;
@@ -6298,11 +6315,12 @@ impl EditorWindow {
                 max,
                 min_duration,
                 created: None,
+                create_on_click,
             },
             down_x,
             origin_x: Some(down_x),
             moved: false,
-            threshold: 0.,
+            threshold: 2.,
             selects_on_click: false,
             shift: false,
             multi: false,
@@ -6561,7 +6579,14 @@ impl EditorWindow {
                 max,
                 min_duration,
                 created,
+                ..
             } => {
+                if !drag.moved {
+                    return;
+                }
+                if matches!(self.scrub, Some(Scrub::Press { .. })) {
+                    self.scrub = None;
+                }
                 let delta_time = delta - (base_end - base_start);
                 let new_end = base_end + delta_time;
                 let (new_end, engaged) =
@@ -7665,13 +7690,11 @@ impl EditorWindow {
             base_start,
             base_end,
             created,
+            create_on_click,
             ..
         } = drag.kind
         {
-            // "If no movement, create a default 1-second segment"
-            // (`TL/ZoomTrack.tsx:284-287`) -- `initialEndTime` is the ghost's
-            // own end, which is where the drawn `+` box already was.
-            if created.is_none() {
+            if create_on_click && created.is_none() {
                 self.create_gap_segment(drag.track, base_start, base_end, window, cx);
             }
         } else if !drag.moved && drag.selects_on_click {
@@ -8994,6 +9017,55 @@ impl EditorWindow {
                 this.apply_preview_scale(cx);
             });
         }));
+    }
+
+    fn can_open_fullscreen_playback(&self) -> bool {
+        self.visual_ready() && !self.voiceover.is_busy()
+    }
+
+    fn open_fullscreen_playback(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.can_open_fullscreen_playback()
+            || self.fullscreen_playback_restore_windowed.is_some()
+        {
+            return;
+        }
+        let restore_windowed = !window.is_fullscreen();
+        self.fullscreen_playback_restore_windowed = Some(restore_windowed);
+        self.view.preview_time = None;
+        self.scene_preview_time = None;
+        self.toolbar_menu = None;
+        self.sticker_picker = None;
+        self.set_fullscreen_preview(true, window, cx);
+        if restore_windowed {
+            window.toggle_fullscreen();
+        }
+        if !self.playing {
+            self.toggle_play(window, cx);
+        }
+    }
+
+    fn close_fullscreen_playback(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(restore_windowed) = self.fullscreen_playback_restore_windowed.take() {
+            self.set_fullscreen_preview(false, window, cx);
+            if restore_windowed && window.is_fullscreen() {
+                window.toggle_fullscreen();
+            }
+        }
+    }
+
+    fn set_fullscreen_preview(
+        &mut self,
+        fullscreen: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.preview.update(cx, |preview, cx| {
+            preview.fullscreen = fullscreen;
+            cx.notify();
+        });
+        self.transport_controls.update(cx, |_, cx| cx.notify());
+        self.focus_root(window, cx);
+        cx.notify();
     }
 
     fn apply_preview_scale(&mut self, cx: &mut Context<Self>) {
@@ -12760,6 +12832,19 @@ impl EditorWindow {
                         this.open_sticker_picker(left, bounds.bottom() + px(6.), window, cx);
                     })),
             )
+            .child(
+                ui::EditorButton::plain(&theme, "fullscreen-playback")
+                    .text(&theme)
+                    .left_icon("icons/maximize-2.svg")
+                    .when(!narrow, |button| {
+                        button.label(tr::editor::window::preview::fullscreen_playback())
+                    })
+                    .tooltip(&theme, tr::editor::window::preview::fullscreen_playback())
+                    .disabled(!self.can_open_fullscreen_playback())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_fullscreen_playback(window, cx);
+                    })),
+            )
             // Crop, frame and image live in this tray now; the frame popover
             // hangs from it.
             .child(
@@ -13026,6 +13111,49 @@ impl EditorWindow {
         self.view.transform.apply_slider(fraction, origin, total);
         self.note_transform("slider", Some(origin));
         cx.notify();
+    }
+
+    fn render_fullscreen_transport(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = Theme::dark();
+        let icon = if self.playing {
+            "icons/pause.svg"
+        } else {
+            "icons/play.svg"
+        };
+        div().size_full().flex().justify_center().child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .px(px(12.))
+                .rounded(px(10.))
+                .bg(gpui::black().opacity(0.78))
+                .text_color(gpui::white())
+                .text_size(px(13.))
+                .child(
+                    ui::EditorButton::plain(&theme, "fullscreen-play-pause")
+                        .tinted(&theme)
+                        .left_icon(icon)
+                        .tooltip(&theme, tr::editor::window::transport::play_pause())
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.toggle_play(window, cx);
+                        })),
+                )
+                .child(format!(
+                    "{} / {}",
+                    timeline::format_time(self.playhead),
+                    timeline::format_time(self.total_duration())
+                ))
+                .child(
+                    ui::EditorButton::plain(&theme, "fullscreen-playback-exit")
+                        .tinted(&theme)
+                        .left_icon("icons/minimize-2.svg")
+                        .label(tr::editor::window::preview::exit_fullscreen_playback())
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.close_fullscreen_playback(window, cx);
+                        })),
+                ),
+        )
     }
 
     /// The player's transport bar: the clock on the left, the transport cluster
@@ -14001,17 +14129,6 @@ impl EditorWindow {
                             .right_0()
                             .top_0()
                             .bottom_0()
-                            // Only the copy and its buttons take the press;
-                            // the rest of the lane still creates a zoom
-                            // (`TL/ZoomTrack.tsx:308-313`). While generating,
-                            // the whole lane holds still: the result replaces
-                            // every zoom, so one made meanwhile would vanish.
-                            .when(generating, |lane| {
-                                lane.on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|_, _, _, cx| cx.stop_propagation()),
-                                )
-                            })
                             .child(
                                 div()
                                     .absolute()
@@ -14510,6 +14627,38 @@ impl Render for EditorWindow {
         self.sync_locale();
         self.sync_imported_waveforms(cx);
         self.sync_preview_scale(window, cx);
+        if self.fullscreen_playback_restore_windowed.is_some() {
+            return div()
+                .relative()
+                .size_full()
+                .font_family(crate::theme::UI_FONT)
+                .locale_font()
+                .bg(gpui::black())
+                .track_focus(&self.focus)
+                .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "escape" {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                        if !event.is_held {
+                            this.close_fullscreen_playback(window, cx);
+                        }
+                    } else {
+                        this.capture_playback_key(event, window, cx);
+                    }
+                }))
+                .child(
+                    self.preview
+                        .clone()
+                        .cached(StyleRefinement::default().size_full()),
+                )
+                .child(
+                    div().absolute().bottom(px(18.)).left_0().right_0().child(
+                        self.transport_controls
+                            .clone()
+                            .cached(StyleRefinement::default().w_full().h(px(40.))),
+                    ),
+                );
+        }
         let title_disabled = !self.visual_ready();
         if self.name_input.read(cx).is_disabled() != title_disabled {
             self.name_input
@@ -16909,15 +17058,9 @@ mod tests {
 
         impl Render for LaneView {
             fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-                let viewport_width = f32::from(window.viewport_size().width);
+                let size = window.viewport_size();
                 self.editor.update(cx, |editor, cx| {
-                    // A column, as in the editor: the body is `flex_1` over an
-                    // absolute scroller, so anything else lays it out zero tall.
-                    div()
-                        .size_full()
-                        .flex()
-                        .flex_col()
-                        .child(editor.render_timeline_body(viewport_width, cx))
+                    editor.render_timeline(f32::from(size.width), f32::from(size.height), cx)
                 })
             }
         }
@@ -16992,6 +17135,33 @@ mod tests {
                     editor.drag.as_ref().map(|drag| &drag.kind),
                     Some(DragKind::CreateZoom { .. })
                 ));
+            });
+        }
+
+        #[gpui::test]
+        fn a_single_click_in_a_zoom_gap_seeks_without_creating_a_segment(
+            cx: &mut gpui::TestAppContext,
+        ) {
+            let (editor, cx) = fixture(cx);
+            let lane = cx.debug_bounds("zoom-generate-prompt").unwrap();
+            let position = point(lane.left() + px(24.), lane.center().y);
+            let viewport_width = cx.update(|window, _| f32::from(window.viewport_size().width));
+            let target = editor.read_with(cx, |editor, _| {
+                editor.time_at(f32::from(position.x), viewport_width)
+            });
+            assert!(target > 0.0);
+            cx.simulate_click(position, gpui::Modifiers::default());
+            editor.read_with(cx, |editor, _| {
+                assert!((editor.playhead - target).abs() <= 1.0 / f64::from(EDITOR_PREVIEW_FPS));
+                assert!(
+                    editor
+                        .project
+                        .timeline
+                        .as_ref()
+                        .unwrap()
+                        .zoom_segments
+                        .is_empty()
+                );
             });
         }
 
@@ -17932,6 +18102,18 @@ mod tests {
         assert_eq!(width, 992.);
         assert!((height - 992. / (1080. / 702.)).abs() < 0.001);
         assert!(height <= 892.);
+    }
+
+    #[test]
+    fn fullscreen_preview_fills_the_display_without_cropping() {
+        assert_eq!(
+            fit_preview_frame((1920., 1080.), (1920., 1080.), 0.),
+            (1920., 1080.)
+        );
+        assert_eq!(
+            fit_preview_frame((1920., 1080.), (1080., 1920.), 0.),
+            (607.5, 1080.)
+        );
     }
 
     #[test]

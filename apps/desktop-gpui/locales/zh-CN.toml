@@ -3108,6 +3108,8 @@ set_default = "设为默认"
 full = "全尺寸"
 half = "1/2"
 quarter = "1/4"
+fullscreen_playback = "全屏播放"
+exit_fullscreen_playback = "退出全屏"
 
 [editor.window.text_menu]
 copy_style = "复制样式"

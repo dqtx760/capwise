@@ -3584,7 +3584,10 @@ impl Default for ProjectConfiguration {
         Self {
             aspect_ratio: Default::default(),
             background: Default::default(),
-            camera: Default::default(),
+            camera: Camera {
+                manual_position: Some(XY::new(0.90, 0.47)),
+                ..Default::default()
+            },
             audio: Default::default(),
             cursor: Default::default(),
             hotkeys: Default::default(),
@@ -5907,6 +5910,20 @@ mod tests {
 
         assert!(config.camera.manual_position.is_none());
         assert!(config.background.display_position.is_none());
+    }
+
+    #[test]
+    fn new_camera_starts_right_and_slightly_above_center() {
+        let fresh = ProjectConfiguration::default();
+        assert_eq!(fresh.camera.manual_position, Some(XY::new(0.90, 0.47)));
+
+        let legacy: ProjectConfiguration = serde_json::from_value(serde_json::json!({
+            "camera": { "position": { "x": "right", "y": "top" } }
+        }))
+        .unwrap();
+        assert_eq!(legacy.camera.manual_position, None);
+        assert!(matches!(legacy.camera.position.x, CameraXPosition::Right));
+        assert!(matches!(legacy.camera.position.y, CameraYPosition::Top));
     }
 
     #[test]

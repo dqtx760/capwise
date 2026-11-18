@@ -1066,6 +1066,7 @@ impl SidebarState {
 /// segment and the multi-zoom panel one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PadKey {
+    CameraPictureInPicture,
     SceneScreen(usize),
     SceneCamera(usize),
     ZoomManual(usize),

@@ -3068,6 +3068,8 @@ set_default = "デフォルトに設定"
 full = "フル"
 half = "1/2"
 quarter = "1/4"
+fullscreen_playback = "全画面再生"
+exit_fullscreen_playback = "全画面を終了"
 
 [editor.window.text_menu]
 copy_style = "スタイルをコピー"

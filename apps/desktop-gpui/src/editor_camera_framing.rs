@@ -444,6 +444,11 @@ impl EditorWindow {
             .is_some_and(|scene| matches!(scene.mode, SceneMode::SplitScreen | SceneMode::Floating))
     }
 
+    pub(crate) fn camera_uses_picture_in_picture(&self) -> bool {
+        self.camera_scene()
+            .is_none_or(|scene| matches!(scene.mode, SceneMode::Default))
+    }
+
     pub(crate) fn render_camera_layout_controls(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = self.theme;
         let scene = self.camera_scene();

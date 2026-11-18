@@ -1783,6 +1783,7 @@ pub struct CameraWindow {
     /// (`camera.tsx:93-112`): only the newest generation writes.
     position_save_generation: Arc<AtomicU64>,
     last_saved_position: Option<(f32, f32)>,
+    position_drag_origin: Option<gpui::Point<gpui::Pixels>>,
 }
 
 impl CameraWindow {
@@ -1792,7 +1793,16 @@ impl CameraWindow {
         target: &cap_recording::screen_capture::ScreenCaptureTarget,
     ) -> crate::recording::StudioCameraSnapshot {
         let placement = (|| {
-            if self.inline {
+            let origin = self
+                .undocked_bounds
+                .unwrap_or_else(|| window.bounds())
+                .origin;
+            if self.inline
+                || !self.position_drag_origin.is_some_and(|start| {
+                    f32::from(origin.x - start.x).abs() >= 1.0
+                        || f32::from(origin.y - start.y).abs() >= 1.0
+                })
+            {
                 return None;
             }
             #[cfg(target_os = "macos")]
@@ -2055,6 +2065,7 @@ impl CameraWindow {
             paints_at_window_start: 0,
             position_save_generation: Arc::new(AtomicU64::new(0)),
             last_saved_position: None,
+            position_drag_origin: None,
         }
     }
 
@@ -3544,6 +3555,8 @@ impl Render for CameraWindow {
                         && this.avatar_menu.is_none()
                         && this.undocked_bounds.is_none()
                     {
+                        this.position_drag_origin
+                            .get_or_insert(window.bounds().origin);
                         window.start_window_move();
                     }
                 }),

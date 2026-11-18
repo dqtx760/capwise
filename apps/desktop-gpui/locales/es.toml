@@ -3068,6 +3068,8 @@ set_default = "Establecer como predeterminado"
 full = "Completa"
 half = "Mitad"
 quarter = "Un cuarto"
+fullscreen_playback = "Pantalla completa"
+exit_fullscreen_playback = "Salir de pantalla completa"
 
 [editor.window.text_menu]
 copy_style = "Copiar estilo"
