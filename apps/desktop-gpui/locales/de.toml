@@ -201,6 +201,10 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS (empfohlen)"
 label = "Maximale Bildrate"
 
+[settings.general.recording.hide_taskbar]
+label = "Windows-Taskleiste während der Aufnahme ausblenden"
+description = "Blendet Taskleisten bei Bildschirm- und Bereichsaufnahmen vorübergehend aus."
+
 [settings.general.recording.marker_sound]
 description = "Spielt einen kurzen Ton ab, wenn Sie während einer Studio-Aufnahme einen Marker hinzufügen. Ihr Mikrofon oder der Systemton kann ihn mit aufnehmen."
 label = "Ton für Marker abspielen"
@@ -922,6 +926,8 @@ heading = "Videolayout"
 pip = "Bild-in-Bild"
 screen_left = "Bildschirm links"
 camera_left = "Kamera links"
+camera_only = "Nur Kamera"
+crop_zoom = "Zoom für den Beschnitt"
 
 [main.device]
 camera = "Kamera"

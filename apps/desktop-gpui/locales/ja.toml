@@ -201,6 +201,10 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS（推奨）"
 label = "最大キャプチャフレームレート"
 
+[settings.general.recording.hide_taskbar]
+label = "録画中に Windows のタスクバーを隠す"
+description = "画面や範囲を録画している間、タスクバーを一時的に隠します。"
+
 [settings.general.recording.marker_sound]
 description = "Studio録画中にマーカーを追加すると短い音を鳴らします。マイクやシステムオーディオに録音される場合があります。"
 label = "マーカー追加時に音を鳴らす"
@@ -922,6 +926,8 @@ heading = "動画レイアウト"
 pip = "ピクチャ・イン・ピクチャ"
 screen_left = "左に画面"
 camera_left = "左にカメラ"
+camera_only = "カメラのみ"
+crop_zoom = "クロップ倍率"
 
 [main.device]
 camera = "カメラ"

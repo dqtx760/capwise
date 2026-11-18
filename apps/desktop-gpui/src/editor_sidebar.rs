@@ -4317,6 +4317,7 @@ pub(crate) fn format_slider_value(value: f32, unit: &str) -> String {
         "x100%" | "pct" => format!("{}%", (value * 100.).round() as i32),
         "volume" => format!("{:.0}%", 100. * 10_f32.powf(value / 20.)),
         "secs" => format!("{value:.2}s"),
+        "zoom" => format!("{value:.2}×"),
         unit => format!("{}{unit}", trim_tenths(value)),
     }
 }

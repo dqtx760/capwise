@@ -201,6 +201,10 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS (सुझाया गया)"
 label = "अधिकतम कैप्चर फ़्रेम रेट"
 
+[settings.general.recording.hide_taskbar]
+label = "रिकॉर्डिंग के दौरान Windows टास्कबार छिपाएँ"
+description = "स्क्रीन या क्षेत्र रिकॉर्ड करते समय टास्कबार अस्थायी रूप से छिपाएँ।"
+
 [settings.general.recording.marker_sound]
 description = "Studio रिकॉर्डिंग के दौरान मार्कर जोड़ने पर एक छोटी आवाज़ चलाता है। आपका माइक्रोफ़ोन या सिस्टम ऑडियो इसे रिकॉर्ड कर सकता है।"
 label = "मार्कर के लिए आवाज़ चलाएँ"
@@ -922,6 +926,8 @@ heading = "वीडियो लेआउट"
 pip = "पिक्चर-इन-पिक्चर"
 screen_left = "बाईं ओर स्क्रीन"
 camera_left = "बाईं ओर कैमरा"
+camera_only = "सिर्फ़ कैमरा"
+crop_zoom = "क्रॉप ज़ूम"
 
 [main.device]
 camera = "कैमरा"

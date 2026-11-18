@@ -1045,6 +1045,8 @@ pub struct GeneralSettings {
     pub show_main_window_after_instant: Option<bool>,
     pub studio_recording_quality: StudioQuality,
     pub recording_countdown: Option<u32>,
+    #[cfg(windows)]
+    pub hide_taskbar_while_recording: bool,
     pub main_window_recording_start_behaviour: MainWindowStartBehaviour,
     pub window_capture_style: WindowCaptureStyle,
     pub focus_center: bool,
@@ -1106,6 +1108,8 @@ pub const SHOW_MAIN_WINDOW_AFTER_INSTANT_KEY: &str = "showMainWindowAfterInstant
 pub const EDITOR_PREVIEW_SPEED_KEY: &str = "editorPreviewSpeed";
 
 pub const RECORDING_MARKER_SOUND_KEY: &str = "recordingMarkerSound";
+#[cfg(windows)]
+pub const HIDE_TASKBAR_WHILE_RECORDING_KEY: &str = "hideTaskbarWhileRecording";
 pub const SHOW_ADVANCED_SETTINGS_KEY: &str = "showAdvancedSettings";
 
 /// Read on every marker press, so it goes through the cached store rather
@@ -1501,6 +1505,8 @@ impl GeneralSettings {
                 .and_then(Value::as_bool),
             studio_recording_quality: enum_at(general, "studioRecordingQuality"),
             recording_countdown: opt_u32_at(general, "recordingCountdown"),
+            #[cfg(windows)]
+            hide_taskbar_while_recording: bool_at(general, HIDE_TASKBAR_WHILE_RECORDING_KEY, false),
             main_window_recording_start_behaviour: enum_at(
                 general,
                 "mainWindowRecordingStartBehaviour",

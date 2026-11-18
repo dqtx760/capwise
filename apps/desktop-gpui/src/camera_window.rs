@@ -1728,12 +1728,13 @@ struct BlurBridge {
     _pump: gpui::Task<()>,
 }
 
-const CAMERA_LAYOUT_CHOICES: [(StudioLayout, Option<CameraShape>); 5] = [
+const CAMERA_LAYOUT_CHOICES: [(StudioLayout, Option<CameraShape>); 6] = [
     (StudioLayout::PictureInPicture, Some(CameraShape::Round)),
     (StudioLayout::PictureInPicture, Some(CameraShape::Square)),
     (StudioLayout::PictureInPicture, Some(CameraShape::Full)),
     (StudioLayout::ScreenLeft, None),
     (StudioLayout::CameraLeft, None),
+    (StudioLayout::CameraOnly, None),
 ];
 
 pub struct CameraWindow {
@@ -2642,9 +2643,7 @@ impl CameraWindow {
                     config.target.display().map(|display| display.id()),
                 )
             })
-        } else if self.studio_layout_controls(cx)
-            && self.studio_layout != StudioLayout::PictureInPicture
-        {
+        } else if self.studio_layout_controls(cx) && self.studio_layout.is_split() {
             let targets = crate::target_overlay::TargetSelect::global(cx);
             let target = targets.read(cx);
             let display = target
@@ -2970,12 +2969,20 @@ impl CameraWindow {
             (pip, tr::main::studio_layout::source()),
             (side, tr::main::studio_layout::screen_left()),
             (side, tr::main::studio_layout::camera_left()),
+            (
+                tr::main::studio_layout::camera_only(),
+                tr::main::studio_layout::camera_only(),
+            ),
         ]
         .into_iter()
         .zip(CAMERA_LAYOUT_CHOICES)
         .map(|((group, label), (layout, shape))| {
             ui::MenuItem::new(
-                format!("{group} · {label}"),
+                if layout == StudioLayout::CameraOnly {
+                    label.to_string()
+                } else {
+                    format!("{group} · {label}")
+                },
                 self.studio_layout == layout && shape.is_none_or(|shape| self.state.shape == shape),
             )
         })
@@ -3110,8 +3117,7 @@ impl CameraWindow {
                         toolbar.child(self.toolbar_button(
                             "layout",
                             "icons/columns-2.svg",
-                            self.layout_menu.is_some()
-                                || self.studio_layout != StudioLayout::PictureInPicture,
+                            self.layout_menu.is_some() || self.studio_layout.is_split(),
                             scale,
                             None,
                             cx,

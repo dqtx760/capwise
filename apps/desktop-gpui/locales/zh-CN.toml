@@ -202,6 +202,10 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS（推荐）"
 label = "最大捕获帧率"
 
+[settings.general.recording.hide_taskbar]
+label = "录制时隐藏 Windows 任务栏"
+description = "录制整屏或区域时临时隐藏任务栏。"
+
 [settings.general.recording.marker_sound]
 description = "录制中添加标记时播放一段简短提示音。麦克风或系统音频可能会录入这段声音。"
 label = "添加标记时播放提示音"
@@ -934,6 +938,8 @@ heading = "成片布局"
 pip = "画中画"
 screen_left = "左屏右人"
 camera_left = "左人右屏"
+camera_only = "全屏人像"
+crop_zoom = "裁剪倍率"
 
 [main.device]
 camera = "摄像头"

@@ -673,7 +673,10 @@ mod tests {
     #[test]
     fn failed_project_write_reopens_pending_and_applies_speed_once() {
         let fixture = Fixture::new(true);
-        let mut setup = fixture.plan();
+        let mut inputs = fixture.inputs();
+        inputs.workflow.as_mut().unwrap().speed = 1.25;
+        let mut setup = initial(&fixture.project, inputs);
+        write(&fixture.project, &setup).unwrap();
         let original = ProjectConfiguration::load(&fixture.project).unwrap();
         prepare_candidate(&fixture.project, &mut setup, &original).unwrap();
         let path = fixture.project.join("project-config.json");
@@ -707,6 +710,25 @@ mod tests {
     }
 
     #[test]
+    fn default_workflow_keeps_a_new_recording_at_normal_speed() {
+        let fixture = Fixture::new(true);
+        let mut setup = fixture.plan();
+        run_on_disk(&fixture.project, &mut setup, true).unwrap();
+
+        let project = ProjectConfiguration::load(&fixture.project).unwrap();
+        let timeline = project.timeline.as_ref().unwrap();
+        assert_eq!(timeline.duration(), 10.0);
+        assert_eq!(timeline.segments[0].timescale, 1.0);
+        assert_eq!(timeline.segments[0].speed_audio_mode, None);
+        assert_eq!(
+            crate::workflow_presets::request_for_project(&fixture.project)
+                .unwrap()
+                .speed,
+            1.0
+        );
+    }
+
+    #[test]
     fn failed_workflow_retry_keeps_manual_edits_and_original_recording_intent() {
         let fixture = Fixture::new(true);
         let mut setup = fixture.plan();
@@ -732,7 +754,7 @@ mod tests {
         let workflow = crate::workflow_presets::request_for_project_checked(&fixture.project)
             .unwrap()
             .unwrap();
-        assert_eq!(workflow.speed, 1.25);
+        assert_eq!(workflow.speed, 1.0);
         assert!(workflow.bilingual_english);
         assert_eq!(
             crate::recording_autocaptions::read_checked(&fixture.project).unwrap(),
@@ -855,7 +877,7 @@ mod tests {
                 .unwrap()
                 .segments[0]
                 .timescale,
-            1.25
+            1.0
         );
         assert!(!pending(&fixture.project));
     }

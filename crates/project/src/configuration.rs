@@ -583,6 +583,8 @@ pub struct Camera {
     pub aspect_ratio: Option<XY<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crop_position: Option<XY<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crop_zoom: Option<f64>,
     #[serde(alias = "rounding_type")]
     pub rounding_type: CornerStyle,
     #[serde(default = "Camera::default_scale_during_zoom")]
@@ -602,6 +604,13 @@ pub enum CameraShape {
 }
 
 impl Camera {
+    pub fn camera_only_crop_zoom(&self) -> f64 {
+        self.crop_zoom
+            .filter(|zoom| zoom.is_finite())
+            .unwrap_or(CAMERA_ONLY_CROP_ZOOM_MIN)
+            .clamp(CAMERA_ONLY_CROP_ZOOM_MIN, CAMERA_ONLY_CROP_ZOOM_MAX)
+    }
+
     pub fn framing_aspect_ratio(&self, source: [f32; 2]) -> f32 {
         self.aspect_ratio
             .filter(|ratio| ratio.x > 0 && ratio.y > 0)
@@ -667,6 +676,7 @@ impl Default for Camera {
             shape: CameraShape::Square,
             aspect_ratio: None,
             crop_position: None,
+            crop_zoom: None,
             rounding_type: CornerStyle::default(),
             scale_during_zoom: Self::default_scale_during_zoom(),
             background_blur: BackgroundBlurConfig::default(),
@@ -674,6 +684,10 @@ impl Default for Camera {
         }
     }
 }
+
+pub const CAMERA_ONLY_CROP_ZOOM_MIN: f64 = 1.0;
+pub const CAMERA_ONLY_CROP_ZOOM_MAX: f64 = 3.0;
+pub const DEFAULT_CAMERA_ONLY_CROP_ZOOM: f64 = 1.25;
 
 impl Default for ShadowConfiguration {
     fn default() -> Self {

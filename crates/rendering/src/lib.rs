@@ -5384,7 +5384,6 @@ impl ProjectUniforms {
                 let output_size = [output_size.0 as f32, output_size.1 as f32];
                 let frame_size = [camera_size.x as f32, camera_size.y as f32];
 
-                let aspect = frame_size[0] / frame_size[1];
                 let padding =
                     output_size[0].min(output_size[1]) * camera_only_padding as f32 / 100.0;
                 let padded_size = [
@@ -5411,20 +5410,26 @@ impl ProjectUniforms {
                     output_size,
                 );
 
-                // In camera-only mode, we ignore the camera shape setting (Square/Source)
-                // and just apply the minimum crop needed to fill the output aspect ratio.
-                // This prevents excessive zooming when shape is set to Square.
-                let crop_bounds = if aspect > output_aspect {
-                    // Camera is wider than output - crop left and right
-                    let visible_width = frame_size[1] * output_aspect;
-                    let crop_x = (frame_size[0] - visible_width) / 2.0;
-                    [crop_x, 0.0, frame_size[0] - crop_x, frame_size[1]]
-                } else {
-                    // Camera is taller than output - crop top and bottom
-                    let visible_height = frame_size[0] / output_aspect;
-                    let crop_y = (frame_size[1] - visible_height) / 2.0;
-                    [0.0, crop_y, frame_size[0], frame_size[1] - crop_y]
-                };
+                let crop_position = project.camera.crop_position.unwrap_or(XY::new(0.5, 0.5));
+                let focal = [
+                    if crop_position.x.is_finite() {
+                        crop_position.x.clamp(0.0, 1.0) as f32
+                    } else {
+                        0.5
+                    },
+                    if crop_position.y.is_finite() {
+                        crop_position.y.clamp(0.0, 1.0) as f32
+                    } else {
+                        0.5
+                    },
+                ];
+                let crop_bounds = fit_crop_to_target(
+                    [0.0, 0.0],
+                    frame_size,
+                    output_aspect,
+                    focal,
+                    project.camera.camera_only_crop_zoom() as f32,
+                );
                 let crop_bounds =
                     inset_crop_bounds(crop_bounds, frame_size, CAMERA_EDGE_CROP_INSET_PX);
 
@@ -5958,6 +5963,34 @@ mod tests {
         let bounds = inset_crop_bounds([0.0, 0.0, 640.0, 480.0], [640.0, 480.0], 2.0);
 
         assert_eq!(bounds, [2.0, 2.0, 638.0, 478.0]);
+    }
+
+    #[test]
+    fn camera_only_crop_zoom_crops_matching_aspect_frames() {
+        let source = [1920.0, 1080.0];
+        let aspect = 16.0 / 9.0;
+        let default_camera = Camera::default();
+        let zoomed_camera = Camera {
+            crop_zoom: Some(1.25),
+            ..Default::default()
+        };
+        let uncropped = fit_crop_to_target(
+            [0.0, 0.0],
+            source,
+            aspect,
+            [0.5, 0.5],
+            default_camera.camera_only_crop_zoom() as f32,
+        );
+        let cropped = fit_crop_to_target(
+            [0.0, 0.0],
+            source,
+            aspect,
+            [0.5, 0.5],
+            zoomed_camera.camera_only_crop_zoom() as f32,
+        );
+
+        assert_eq!(uncropped, [0.0, 0.0, 1920.0, 1080.0]);
+        assert_eq!(cropped, [192.0, 108.0, 1728.0, 972.0]);
     }
 
     #[test]
@@ -6584,7 +6617,7 @@ mod style_image_tests {
         let constants = RenderVideoConstants::new_with_options(
             RenderOptions {
                 screen_size: size,
-                camera_size: Some(size),
+                camera_size: Some(XY::new(240, 90)),
                 preserve_screen_alpha: false,
             },
             recording_meta,
@@ -6618,8 +6651,8 @@ mod style_image_tests {
                 90,
             )),
             camera_frame: Some(DecodedFrame::new(
-                [255, 0, 0, 255].repeat(160 * 90),
-                160,
+                [255, 0, 0, 255].repeat(240 * 90),
+                240,
                 90,
             )),
             segment_time: 3.0,
@@ -6641,14 +6674,21 @@ mod style_image_tests {
             )
         };
         let uniforms = at(&project, 180);
+        assert!(!uniforms.scene.should_render_screen());
         assert!(uniforms.camera_background_effect_mode().is_none());
-        assert_eq!(
-            uniforms
+        let camera_only = uniforms.camera_only.expect("full camera");
+        assert_eq!(camera_only.preserve_source_alpha, 0.0);
+        assert_eq!(camera_only.target_bounds, [0.0, 0.0, 160.0, 90.0]);
+
+        for (position, expected_left) in [(0.0, 2.0), (0.5, 42.0), (1.0, 82.0)] {
+            project.camera.crop_position = Some(XY::new(position, 0.5));
+            let crop = at(&project, 180)
                 .camera_only
-                .expect("full camera")
-                .preserve_source_alpha,
-            0.0
-        );
+                .expect("camera crop")
+                .crop_bounds;
+            assert_eq!(crop, [expected_left, 2.0, expected_left + 156.0, 88.0]);
+        }
+        project.camera.crop_position = None;
         let mut layers = RendererLayers::new(&constants.device, &constants.queue);
         layers
             .prepare(&constants, &uniforms, &frames, &cursor, true)

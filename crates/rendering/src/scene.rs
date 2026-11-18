@@ -283,7 +283,7 @@ impl InterpolatedScene {
     fn get_scene_values(mode: &SceneMode) -> (f64, f64, f64) {
         match mode {
             SceneMode::Default => (1.0, 1.0, 1.0),
-            SceneMode::CameraOnly => (1.0, 1.0, 1.0),
+            SceneMode::CameraOnly => (1.0, 0.0, 1.0),
             SceneMode::HideCamera => (0.0, 1.0, 1.0),
             // Both panes fully visible; the split geometry (50/50 halves or
             // floating cards) is applied in the compositor, driven by
@@ -488,5 +488,15 @@ mod tests {
             let previous = scene_at(time - 1.0 / 60.0, &segments);
             assert_eq!(scene.camera_only_motion(&previous), 0.0);
         }
+    }
+
+    #[test]
+    fn camera_only_hides_screen_and_cursor_layers() {
+        let segments = [camera_scene(0.0)];
+        let scene = scene_at(3.0, &segments);
+
+        assert!(scene.should_render_camera());
+        assert!(!scene.should_render_screen());
+        assert!(scene.is_transitioning_camera_only());
     }
 }

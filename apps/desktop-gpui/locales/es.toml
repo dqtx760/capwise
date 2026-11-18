@@ -201,6 +201,10 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS (recomendado)"
 label = "Velocidad de fotogramas máxima"
 
+[settings.general.recording.hide_taskbar]
+label = "Ocultar la barra de tareas de Windows durante la grabación"
+description = "Oculta temporalmente las barras de tareas al grabar la pantalla o un área."
+
 [settings.general.recording.marker_sound]
 description = "Reproduce un sonido corto cuando añades un marcador durante una grabación Studio. Tu micrófono o el audio del sistema pueden captarlo."
 label = "Reproducir un sonido con los marcadores"
@@ -922,6 +926,8 @@ heading = "Diseño del vídeo"
 pip = "Imagen en imagen"
 screen_left = "Pantalla izquierda"
 camera_left = "Cámara izquierda"
+camera_only = "Solo cámara"
+crop_zoom = "Zoom de recorte"
 
 [main.device]
 camera = "Cámara"

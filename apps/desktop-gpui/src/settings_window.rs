@@ -4075,18 +4075,38 @@ impl SettingsWindow {
             .map(|(_, label)| label().to_string())
             .unwrap_or_else(|| settings.recording_countdown.unwrap_or(0).to_string());
 
+        let countdown = self.setting_row(
+            tr::settings::general::recording::countdown::label(),
+            Some(tr::settings::general::recording::countdown::description()),
+            self.select("countdown", countdown_label, MenuKind::Countdown, cx)
+                .into_any_element(),
+        );
+        #[cfg(windows)]
+        let taskbar = self.setting_row(
+            tr::settings::general::recording::hide_taskbar::label(),
+            Some(tr::settings::general::recording::hide_taskbar::description()),
+            self.toggle(
+                "hide-taskbar-while-recording",
+                tr::settings::general::recording::hide_taskbar::label(),
+                settings.hide_taskbar_while_recording,
+                cx,
+                |this, cx| {
+                    let value = !this.settings.hide_taskbar_while_recording;
+                    this.settings.hide_taskbar_while_recording = value;
+                    this.write_bool(store::HIDE_TASKBAR_WHILE_RECORDING_KEY, value, cx);
+                },
+            )
+            .into_any_element(),
+        );
         self.section(
             tr::settings::general::recording::title(),
             Some(tr::settings::general::recording::description()),
             None,
             vec![
                 self.rows(vec![
-                    self.setting_row(
-                        tr::settings::general::recording::countdown::label(),
-                        Some(tr::settings::general::recording::countdown::description()),
-                        self.select("countdown", countdown_label, MenuKind::Countdown, cx)
-                            .into_any_element(),
-                    ),
+                    countdown,
+                    #[cfg(windows)]
+                    taskbar,
                     self.render_post_studio_panel(cx),
                 ])
                 .into_any_element(),

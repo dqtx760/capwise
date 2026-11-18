@@ -62,6 +62,8 @@ fn main_surfaces_match_the_literals_they_replaced() {
         (tr::main::studio_layout::pip(), "Picture-in-picture"),
         (tr::main::studio_layout::screen_left(), "Screen left"),
         (tr::main::studio_layout::camera_left(), "Camera left"),
+        (tr::main::studio_layout::camera_only(), "Camera only"),
+        (tr::main::studio_layout::crop_zoom(), "Crop zoom"),
         (tr::camera::avatar::title(), "Avatar"),
         (tr::camera::avatar::camera(), "Camera"),
         (tr::camera::avatar::cat(), "Cat"),

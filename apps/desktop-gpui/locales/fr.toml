@@ -201,6 +201,10 @@ fps_30 = "30 i/s"
 fps_60 = "60 i/s (recommandé)"
 label = "Fréquence d'images maximale"
 
+[settings.general.recording.hide_taskbar]
+label = "Masquer la barre des tâches de Windows pendant l’enregistrement"
+description = "Masque temporairement les barres des tâches lors de la capture de l’écran ou d’une zone."
+
 [settings.general.recording.marker_sound]
 description = "Émet un son bref lorsque vous ajoutez un repère pendant un enregistrement Studio. Votre micro ou le son du système peuvent l'enregistrer."
 label = "Émettre un son pour les repères"
@@ -922,6 +926,8 @@ heading = "Mise en page vidéo"
 pip = "Image dans l’image"
 screen_left = "Écran à gauche"
 camera_left = "Caméra à gauche"
+camera_only = "Caméra seule"
+crop_zoom = "Zoom du recadrage"
 
 [main.device]
 camera = "Caméra"

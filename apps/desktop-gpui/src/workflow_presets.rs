@@ -29,7 +29,7 @@ impl Default for WorkflowPreset {
         Self {
             id: QIAOMU_ID.into(),
             name: "乔木预设".into(),
-            speed: 1.25,
+            speed: 1.0,
             bilingual_english: true,
             translation_language: default_translation_language(),
             ai_caption_review: true,
@@ -261,25 +261,22 @@ mod tests {
     }
 
     #[test]
-    fn qiaomu_retimes_source_once_and_preserves_pitch_and_independent_music() {
+    fn default_qiaomu_keeps_normal_speed_and_preserves_independent_music() {
         let mut project = project();
         let music =
             serde_json::to_value(&project.timeline.as_ref().unwrap().audio_segments).unwrap();
         let catalog = WorkflowPresets::default();
         apply_to_new_recording(&mut project, &catalog, true, true, None).unwrap();
         let timeline = project.timeline.as_ref().unwrap();
-        assert_eq!(timeline.duration(), 8.0);
-        assert_eq!(timeline.segments[0].timescale, 1.25);
-        assert_eq!(
-            timeline.segments[0].speed_audio_mode,
-            Some(ClipSpeedAudioMode::MaintainPitch)
-        );
+        assert_eq!(timeline.duration(), 10.0);
+        assert_eq!(timeline.segments[0].timescale, 1.0);
+        assert_eq!(timeline.segments[0].speed_audio_mode, None);
         let Some(cap_project::TimelineFrameMapping::Single { source, .. }) =
             timeline.get_frame_mapping(4.0)
         else {
             panic!("single source");
         };
-        assert_eq!(source.source_time, 7.0);
+        assert_eq!(source.source_time, 6.0);
         assert_eq!(
             serde_json::to_value(&timeline.audio_segments).unwrap(),
             music
@@ -367,7 +364,7 @@ mod tests {
         catalog.selected_mut().unwrap().speed = 1.5;
         catalog.selected_mut().unwrap().name = "Tutorial".into();
         assert_ne!(catalog.selected_id, QIAOMU_ID);
-        assert_eq!(catalog.presets[0].speed, 1.25);
+        assert_eq!(catalog.presets[0].speed, 1.0);
         let restored: WorkflowPresets =
             serde_json::from_value(serde_json::to_value(&catalog).unwrap()).unwrap();
         assert_eq!(restored.selected().unwrap().name, "Tutorial");

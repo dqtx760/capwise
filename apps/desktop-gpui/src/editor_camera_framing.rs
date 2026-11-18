@@ -44,7 +44,7 @@ fn parse_ratio(width: &str, height: &str) -> Option<XY<u32>> {
     .then_some(XY::new(x, y))
 }
 
-const LAYOUT_CHOICES: [(StudioLayout, fn() -> &'static str, &str); 3] = [
+const LAYOUT_CHOICES: [(StudioLayout, fn() -> &'static str, &str); 4] = [
     (
         StudioLayout::PictureInPicture,
         tr::main::studio_layout::pip,
@@ -59,6 +59,11 @@ const LAYOUT_CHOICES: [(StudioLayout, fn() -> &'static str, &str); 3] = [
         StudioLayout::CameraLeft,
         tr::main::studio_layout::camera_left,
         "icons/panel-left.svg",
+    ),
+    (
+        StudioLayout::CameraOnly,
+        tr::main::studio_layout::camera_only,
+        "icons/crop.svg",
     ),
 ];
 
@@ -97,7 +102,8 @@ fn scene_camera_layout(scene: &SceneSegment) -> Option<StudioLayout> {
             },
         ),
         SceneMode::Default => Some(StudioLayout::PictureInPicture),
-        SceneMode::CameraOnly | SceneMode::HideCamera => None,
+        SceneMode::CameraOnly => Some(StudioLayout::CameraOnly),
+        SceneMode::HideCamera => None,
     }
 }
 
@@ -228,6 +234,14 @@ impl EditorWindow {
                 ),
             );
         }
+        if scene.is_some_and(|scene| matches!(scene.mode, SceneMode::CameraOnly)) {
+            column = column.child(self.slider_field(
+                tr::main::studio_layout::crop_zoom(),
+                SliderKey::Camera(CameraSlider::CropZoom),
+                "zoom",
+                cx,
+            ));
+        }
         if self.project.timeline.as_ref().is_some_and(|timeline| {
             timeline
                 .scene_segments
@@ -295,15 +309,24 @@ impl EditorWindow {
             };
 
             if scene_camera_layout(scene) == Some(choice)
-                && (choice == StudioLayout::PictureInPicture
-                    || scene
-                        .split_layout
-                        .is_some_and(|layout| layout.force_horizontal))
+                && (matches!(
+                    choice,
+                    StudioLayout::PictureInPicture | StudioLayout::CameraOnly
+                ) || scene
+                    .split_layout
+                    .is_some_and(|layout| layout.force_horizontal))
             {
                 return false;
             }
             if choice == StudioLayout::PictureInPicture {
                 scene.mode = SceneMode::Default;
+            } else if choice == StudioLayout::CameraOnly {
+                scene.mode = SceneMode::CameraOnly;
+                scene.split_layout = None;
+                project
+                    .camera
+                    .crop_zoom
+                    .get_or_insert(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM);
             } else {
                 if !matches!(scene.mode, SceneMode::SplitScreen | SceneMode::Floating) {
                     scene.mode = SceneMode::Floating;
@@ -722,6 +745,42 @@ impl EditorWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scene_layout_matches_camera_only_and_split_modes() {
+        let make_scene = |mode, split_layout| SceneSegment {
+            start: 0.0,
+            end: 1.0,
+            mode,
+            split_layout,
+            transition_in: 0.0,
+            transition_out: 0.0,
+        };
+
+        assert_eq!(
+            scene_camera_layout(&make_scene(SceneMode::CameraOnly, None)),
+            Some(StudioLayout::CameraOnly)
+        );
+        assert_eq!(
+            scene_camera_layout(&make_scene(
+                SceneMode::Floating,
+                Some(cap_project::SplitLayout {
+                    camera_first: true,
+                    ..Default::default()
+                })
+            )),
+            Some(StudioLayout::CameraLeft)
+        );
+        assert_eq!(
+            scene_camera_layout(&make_scene(SceneMode::SplitScreen, None)),
+            Some(StudioLayout::ScreenLeft)
+        );
+        assert_eq!(
+            scene_camera_layout(&make_scene(SceneMode::HideCamera, None)),
+            None
+        );
+        assert!(!StudioLayout::CameraOnly.is_split());
+    }
 
     #[test]
     fn a_recorded_circle_stays_recognizable_and_can_return_to_a_square() {

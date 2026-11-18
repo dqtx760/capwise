@@ -21,9 +21,14 @@ pub(crate) enum StudioLayout {
     PictureInPicture,
     ScreenLeft,
     CameraLeft,
+    CameraOnly,
 }
 
 impl StudioLayout {
+    pub(crate) fn is_split(self) -> bool {
+        matches!(self, Self::ScreenLeft | Self::CameraLeft)
+    }
+
     pub(crate) fn preferred() -> Self {
         crate::store::store_section(crate::store::RECORDING_SETTINGS)
             .get(STUDIO_LAYOUT_SETTING)
@@ -78,8 +83,12 @@ impl StudioLayout {
         timeline.scene_segments.push(SceneSegment {
             start: 0.0,
             end,
-            mode: SceneMode::Floating,
-            split_layout: Some(SplitLayout {
+            mode: if self == Self::CameraOnly {
+                SceneMode::CameraOnly
+            } else {
+                SceneMode::Floating
+            },
+            split_layout: self.is_split().then_some(SplitLayout {
                 camera_first: self == Self::CameraLeft,
                 force_horizontal: true,
                 camera_framing: SplitCameraFraming::Relaxed,
@@ -89,6 +98,12 @@ impl StudioLayout {
             transition_in: 0.0,
             transition_out: 0.0,
         });
+        if self == Self::CameraOnly {
+            project
+                .camera
+                .crop_zoom
+                .get_or_insert(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM);
+        }
         project
             .aspect_ratio
             .get_or_insert(cap_project::AspectRatio::Wide);
@@ -417,6 +432,31 @@ mod tests {
             assert_eq!(split.camera_framing, SplitCameraFraming::Relaxed);
             assert!(!layout.apply(&mut loaded, true));
         }
+    }
+
+    #[test]
+    fn camera_only_studio_layout_fills_the_recording_with_the_camera() {
+        let dir = fixture(false);
+        let mut project = ProjectConfiguration::load(dir.path()).unwrap();
+        project.aspect_ratio = Some(cap_project::AspectRatio::Vertical);
+
+        assert!(StudioLayout::CameraOnly.apply(&mut project, true));
+
+        let timeline = project.timeline.as_ref().unwrap();
+        assert_eq!(timeline.scene_segments.len(), 1);
+        let scene = &timeline.scene_segments[0];
+        assert!(matches!(scene.mode, SceneMode::CameraOnly));
+        assert!(scene.split_layout.is_none());
+        assert_eq!(
+            project.camera.camera_only_crop_zoom(),
+            cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM
+        );
+        assert_eq!((scene.start, scene.end), (0.0, 10.0));
+        assert!(matches!(
+            project.aspect_ratio,
+            Some(cap_project::AspectRatio::Vertical)
+        ));
+        assert!(!StudioLayout::CameraOnly.apply(&mut project, false));
     }
 
     fn fixture(with_events: bool) -> tempfile::TempDir {
