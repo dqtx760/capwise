@@ -2492,6 +2492,7 @@ pub fn default_scene_segment(start: f64, end: f64) -> SceneSegment {
         end,
         mode: SceneMode::CameraOnly,
         split_layout: None,
+        camera_only_crop_zoom: None,
         transition_in: 0.3,
         transition_out: 0.3,
     }

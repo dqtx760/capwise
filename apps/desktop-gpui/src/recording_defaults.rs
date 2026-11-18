@@ -95,15 +95,11 @@ impl StudioLayout {
                 fit_screen: true,
                 ..Default::default()
             }),
+            camera_only_crop_zoom: (self == Self::CameraOnly)
+                .then_some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM),
             transition_in: 0.0,
             transition_out: 0.0,
         });
-        if self == Self::CameraOnly {
-            project
-                .camera
-                .crop_zoom
-                .get_or_insert(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM);
-        }
         project
             .aspect_ratio
             .get_or_insert(cap_project::AspectRatio::Wide);
@@ -447,6 +443,10 @@ mod tests {
         let scene = &timeline.scene_segments[0];
         assert!(matches!(scene.mode, SceneMode::CameraOnly));
         assert!(scene.split_layout.is_none());
+        assert_eq!(
+            scene.camera_only_crop_zoom,
+            Some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM)
+        );
         assert_eq!(
             project.camera.camera_only_crop_zoom(),
             cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM

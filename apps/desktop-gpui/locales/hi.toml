@@ -201,13 +201,19 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS (सुझाया गया)"
 label = "अधिकतम कैप्चर फ़्रेम रेट"
 
-[settings.general.recording.hide_taskbar]
-label = "रिकॉर्डिंग के दौरान Windows टास्कबार छिपाएँ"
-description = "स्क्रीन या क्षेत्र रिकॉर्ड करते समय टास्कबार अस्थायी रूप से छिपाएँ।"
+[settings.general.recording.exclude_taskbar]
+label = "रिकॉर्डिंग से Windows टास्कबार क्षेत्र हटाएँ"
+description = "स्क्रीन का कार्यक्षेत्र या चुने हुए क्षेत्र का उसके भीतर का हिस्सा रिकॉर्ड करें।"
 
 [settings.general.recording.marker_sound]
 description = "Studio रिकॉर्डिंग के दौरान मार्कर जोड़ने पर एक छोटी आवाज़ चलाता है। आपका माइक्रोफ़ोन या सिस्टम ऑडियो इसे रिकॉर्ड कर सकता है।"
 label = "मार्कर के लिए आवाज़ चलाएँ"
+
+[settings.general.recording.camera_preview]
+title = "कैमरा पूर्वावलोकन"
+description = "चुनें कि तैरता हुआ कैमरा पूर्वावलोकन दिखे या नहीं।"
+label = "तैरती कैमरा विंडो दिखाएँ"
+option_description = "Studio कैमरे को अलग से रिकॉर्ड करता है। Instant इस विंडो को दिखाता रहता है क्योंकि यह स्क्रीन रिकॉर्डिंग का हिस्सा है।"
 
 [settings.general.storage]
 choose_folder = "फ़ोल्डर चुनें"
@@ -917,7 +923,7 @@ framing = "कैमरा फ़्रेमिंग"
 framing_fill = "भरें"
 framing_relaxed = "विस्तृत"
 framing_fit = "पूरा फ़्रेम"
-at_playhead = "प्लेहेड की स्थिति पर लागू"
+at_playhead = "चुनी गई वीडियो क्लिप या प्लेहेड पर मौजूद क्लिप पर लागू"
 side_by_side = "साथ-साथ"
 round = "गोल"
 square = "वर्ग"

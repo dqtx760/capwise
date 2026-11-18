@@ -1899,6 +1899,23 @@ fn effective_to_output(holds: &[(f64, f64)], effective: f64) -> f64 {
     output
 }
 
+pub(crate) fn clip_output_ranges(timeline: &TimelineConfiguration) -> Vec<(f64, f64)> {
+    let offsets = clip_timeline_offsets(timeline);
+    let holds = timeline.hold_windows();
+    timeline
+        .segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| {
+            let offset = offsets.get(index).copied().unwrap_or(0.0);
+            (
+                effective_to_output(&holds, offset).max(0.0),
+                effective_to_output(&holds, offset + segment.duration()),
+            )
+        })
+        .collect()
+}
+
 /// `relativeSegment` (`TL/ClipTrack.tsx:636-666`): a clip's on-screen box is
 /// its gapless offset and duration pushed through the hold windows, so the box
 /// stretches across every pause a fullscreen text segment inserts inside it.

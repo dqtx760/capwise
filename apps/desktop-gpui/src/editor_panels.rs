@@ -2780,6 +2780,7 @@ pub enum PanelSlider {
     SceneTransitionOut,
     SceneScreenZoom,
     SceneCameraZoom,
+    SceneCameraOnlyZoom,
 
     Camera3DPose(Camera3DProperty),
     Camera3DBlur(Camera3DBlurKey),
@@ -3654,6 +3655,11 @@ impl EditorWindow {
             PanelSlider::MaskDarkness | PanelSlider::MaskFade => (0., 1., 0.01),
             PanelSlider::SceneTransitionIn | PanelSlider::SceneTransitionOut => (0., 2., 0.05),
             PanelSlider::SceneScreenZoom | PanelSlider::SceneCameraZoom => (100., 300., 1.),
+            PanelSlider::SceneCameraOnlyZoom => (
+                cap_project::CAMERA_ONLY_CROP_ZOOM_MIN as f32,
+                cap_project::CAMERA_ONLY_CROP_ZOOM_MAX as f32,
+                0.01,
+            ),
             PanelSlider::Camera3DTransitionIn | PanelSlider::Camera3DTransitionOut => {
                 let (min, max, step) = CAMERA3D_TRANSITION_LIMITS;
                 (min as f32, max as f32, step as f32)
@@ -3793,6 +3799,16 @@ impl EditorWindow {
                     (segment.split_layout.unwrap_or_default().camera_zoom * 100.) as f32
                 })
             }
+            PanelSlider::SceneCameraOnlyZoom => timeline.scene_segments.get(index).map_or_else(
+                || self.project.camera.camera_only_crop_zoom() as f32,
+                |segment| {
+                    segment
+                        .camera_only_crop_zoom
+                        .filter(|zoom| zoom.is_finite())
+                        .unwrap_or_else(|| self.project.camera.camera_only_crop_zoom())
+                        as f32
+                },
+            ),
             PanelSlider::Camera3DPose(property) => {
                 timeline.camera3d_segments.get(index).map_or(0., |segment| {
                     let pose = if self.sidebar.editing_end_pose {
@@ -4040,6 +4056,19 @@ impl EditorWindow {
                     true
                 })
             }
+            PanelSlider::SceneCameraOnlyZoom => self.edit_scene_segment(
+                "scene-camera-only-zoom",
+                index,
+                window,
+                cx,
+                move |segment| {
+                    segment.camera_only_crop_zoom = Some(f64::from(value).clamp(
+                        cap_project::CAMERA_ONLY_CROP_ZOOM_MIN,
+                        cap_project::CAMERA_ONLY_CROP_ZOOM_MAX,
+                    ));
+                    true
+                },
+            ),
             // `setPoseProperty` -> `writeSelectedPose` (`:4944-4955`): a camera
             // edit on a still shot moves *both* ends, so dialling in a hold
             // never turns into an unrequested move.

@@ -201,13 +201,19 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS（推奨）"
 label = "最大キャプチャフレームレート"
 
-[settings.general.recording.hide_taskbar]
-label = "録画中に Windows のタスクバーを隠す"
-description = "画面や範囲を録画している間、タスクバーを一時的に隠します。"
+[settings.general.recording.exclude_taskbar]
+label = "録画から Windows のタスクバー領域を除外する"
+description = "画面の作業領域、または選択範囲のうち作業領域内にある部分を録画します。"
 
 [settings.general.recording.marker_sound]
 description = "Studio録画中にマーカーを追加すると短い音を鳴らします。マイクやシステムオーディオに録音される場合があります。"
 label = "マーカー追加時に音を鳴らす"
+
+[settings.general.recording.camera_preview]
+title = "カメラプレビュー"
+description = "フローティングカメラプレビューを表示するか選択します。"
+label = "カメラのフローティングウィンドウを表示"
+option_description = "Studio はカメラを別トラックとして録画します。Instant では画面収録に含まれるため、ウィンドウを表示したままにします。"
 
 [settings.general.storage]
 choose_folder = "フォルダを選択"
@@ -917,7 +923,7 @@ framing = "カメラの画角"
 framing_fill = "全面"
 framing_relaxed = "ゆったり"
 framing_fit = "フルフレーム"
-at_playhead = "再生ヘッド位置のシーンに適用"
+at_playhead = "選択した動画クリップ、または再生ヘッド位置のクリップに適用"
 side_by_side = "並べて表示"
 round = "円形"
 square = "正方形"

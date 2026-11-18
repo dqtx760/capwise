@@ -805,7 +805,6 @@ pub enum CameraSlider {
     SkinSmoothing,
     CropX,
     CropY,
-    CropZoom,
 }
 
 impl CameraSlider {
@@ -824,8 +823,7 @@ impl CameraSlider {
             | Self::ShadowBlur
             | Self::SkinSmoothing
             | Self::CropX
-            | Self::CropY
-            | Self::CropZoom => false,
+            | Self::CropY => false,
         }
     }
 
@@ -834,11 +832,6 @@ impl CameraSlider {
             // `minValue={20} maxValue={80} step={0.1}` (`:3204-3206`).
             Self::Size => (20., 80., 0.1),
             Self::ZoomSize => (10., 100., 0.1),
-            Self::CropZoom => (
-                cap_project::CAMERA_ONLY_CROP_ZOOM_MIN as f32,
-                cap_project::CAMERA_ONLY_CROP_ZOOM_MAX as f32,
-                0.01,
-            ),
             _ => (0., 100., 0.1),
         }
     }
@@ -857,7 +850,6 @@ impl CameraSlider {
             Self::SkinSmoothing => camera.skin_smoothing * 100.,
             Self::CropX => camera.crop_position.map_or(50., |p| p.x as f32 * 100.),
             Self::CropY => camera.crop_position.map_or(50., |p| p.y as f32 * 100.),
-            Self::CropZoom => camera.camera_only_crop_zoom() as f32,
         }
     }
 }
@@ -1812,9 +1804,6 @@ impl EditorWindow {
                             position.y = f64::from(value) / 100.;
                         }
                         camera.crop_position = Some(position);
-                    }
-                    CameraSlider::CropZoom => {
-                        camera.crop_zoom = Some(f64::from(value));
                     }
                     CameraSlider::Size => camera.size = value,
                     CameraSlider::ZoomSize => camera.scale_during_zoom = value / 100.,
@@ -5858,7 +5847,6 @@ mod tests {
         assert_eq!(CaptionSlider::ShadowSize.limits(), (0., 30., 0.5));
         assert_eq!(CameraSlider::Size.limits(), (20., 80., 0.1));
         assert_eq!(CameraSlider::ZoomSize.limits(), (10., 100., 0.1));
-        assert_eq!(CameraSlider::CropZoom.limits(), (1., 3., 0.01));
         assert_eq!(CameraSlider::ShadowBlur.limits(), (0., 100., 0.1));
         assert_eq!(AudioSlider::MicVolume.limits(), (-30., 10., 0.1));
         assert_eq!(CursorSlider::Size.limits(), (20., 300., 1.));
@@ -5880,14 +5868,6 @@ mod tests {
         assert_eq!(CameraSlider::ZoomSize.read(&project), 40.);
         project.camera.scale_during_zoom = 1.;
         assert_eq!(CameraSlider::ZoomSize.read(&project), 100.);
-    }
-
-    #[test]
-    fn camera_crop_zoom_slider_defaults_to_one_and_reads_saved_values() {
-        let mut project = ProjectConfiguration::default();
-        assert_eq!(CameraSlider::CropZoom.read(&project), 1.);
-        project.camera.crop_zoom = Some(1.25);
-        assert_eq!(CameraSlider::CropZoom.read(&project), 1.25);
     }
 
     #[test]
@@ -6560,7 +6540,6 @@ mod tests {
             CameraSlider::ShadowOpacity,
             CameraSlider::ShadowBlur,
             CameraSlider::SkinSmoothing,
-            CameraSlider::CropZoom,
         ] {
             assert!(
                 !slider.changes_timeline_model(),

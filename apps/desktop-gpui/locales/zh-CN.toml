@@ -202,13 +202,19 @@ fps_30 = "30 FPS"
 fps_60 = "60 FPS（推荐）"
 label = "最大捕获帧率"
 
-[settings.general.recording.hide_taskbar]
-label = "录制时隐藏 Windows 任务栏"
-description = "录制整屏或区域时临时隐藏任务栏。"
+[settings.general.recording.exclude_taskbar]
+label = "录制时排除任务栏区域"
+description = "整屏和区域录制只采集显示器工作区内的画面，任务栏仍显示在桌面上。"
 
 [settings.general.recording.marker_sound]
 description = "录制中添加标记时播放一段简短提示音。麦克风或系统音频可能会录入这段声音。"
 label = "添加标记时播放提示音"
+
+[settings.general.recording.camera_preview]
+title = "摄像头预览"
+description = "设置摄像头悬浮预览的显示方式。"
+label = "显示摄像头悬浮窗"
+option_description = "关闭后，Studio 仍会独立录制摄像头；Instant 录制会保留悬浮窗，因为它属于屏幕画面。"
 
 [settings.general.storage]
 choose_folder = "更改…"
@@ -929,7 +935,7 @@ framing = "人物取景"
 framing_fill = "铺满"
 framing_relaxed = "宽松"
 framing_fit = "完整画面"
-at_playhead = "调整播放头所在的场景"
+at_playhead = "应用于选中的视频片段；未选中时应用于播放头所在片段"
 side_by_side = "并排"
 round = "圆形"
 square = "方形"

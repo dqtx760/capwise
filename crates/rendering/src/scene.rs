@@ -68,6 +68,7 @@ pub struct InterpolatedScene {
     pub from_mode: SceneMode,
     pub to_mode: SceneMode,
     pub camera_only_zoom: f64,
+    pub camera_only_crop_zoom: Option<f64>,
     /// 0.0 = no split layout, 1.0 = fully side-by-side. Ramps with
     /// `transition_progress` when entering/leaving [`SceneMode::SplitScreen`]
     /// or [`SceneMode::Floating`] so the compositor morphs the screen+camera
@@ -82,7 +83,7 @@ pub struct InterpolatedScene {
 }
 
 impl InterpolatedScene {
-    fn from_single_mode(scene_mode: SceneMode) -> Self {
+    fn from_single_mode(scene_mode: SceneMode, camera_only_crop_zoom: Option<f64>) -> Self {
         let (camera_opacity, screen_opacity, camera_scale) = Self::get_scene_values(&scene_mode);
 
         InterpolatedScene {
@@ -94,6 +95,7 @@ impl InterpolatedScene {
             from_mode: scene_mode,
             to_mode: scene_mode,
             camera_only_zoom: 1.0,
+            camera_only_crop_zoom,
             split_factor: if is_split_mode(&scene_mode) { 1.0 } else { 0.0 },
             floating_factor: if matches!(scene_mode, SceneMode::Floating) {
                 1.0
@@ -105,6 +107,15 @@ impl InterpolatedScene {
 
     pub fn new(cursor: SceneSegmentsCursor) -> Self {
         let ease_in_out = bezier_easing::bezier_easing(0.42, 0.0, 0.58, 1.0).unwrap();
+        let camera_only_crop_zoom = cursor
+            .segment
+            .filter(|segment| matches!(segment.mode, SceneMode::CameraOnly))
+            .or_else(|| {
+                cursor
+                    .next_segment()
+                    .filter(|segment| matches!(segment.mode, SceneMode::CameraOnly))
+            })
+            .and_then(|segment| segment.camera_only_crop_zoom);
 
         let (current_mode, next_mode, transition_progress) = if let Some(segment) = cursor.segment {
             let transition_in = segment.transition_in.max(0.0);
@@ -120,7 +131,10 @@ impl InterpolatedScene {
                     let gap = segment.start - prev_seg.end;
                     if gap < MIN_GAP_FOR_TRANSITION && same_mode(&prev_seg.mode, &segment.mode) {
                         // Small gap between same modes, no transition needed
-                        return InterpolatedScene::from_single_mode(segment.mode);
+                        return InterpolatedScene::from_single_mode(
+                            segment.mode,
+                            segment.camera_only_crop_zoom,
+                        );
                     } else if gap > 0.01 {
                         SceneMode::Default
                     } else {
@@ -275,6 +289,7 @@ impl InterpolatedScene {
             from_mode: current_mode,
             to_mode: next_mode,
             camera_only_zoom,
+            camera_only_crop_zoom,
             split_factor,
             floating_factor,
         }
@@ -379,9 +394,19 @@ mod tests {
             end: 5.0,
             mode: SceneMode::CameraOnly,
             split_layout: None,
+            camera_only_crop_zoom: None,
             transition_in: transition,
             transition_out: transition,
         }
+    }
+
+    #[test]
+    fn camera_only_crop_zoom_is_carried_from_the_scene_segment() {
+        let scene = SceneSegment {
+            camera_only_crop_zoom: Some(1.75),
+            ..camera_scene(0.0)
+        };
+        assert_eq!(scene_at(3.0, &[scene]).camera_only_crop_zoom, Some(1.75));
     }
 
     #[test]

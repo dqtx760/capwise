@@ -52,7 +52,7 @@ fn main_surfaces_match_the_literals_they_replaced() {
         (tr::main::studio_layout::framing_fit(), "Full frame"),
         (
             tr::main::studio_layout::at_playhead(),
-            "Applies at the playhead",
+            "Applies to selected video clips, or the clip at the playhead",
         ),
         (tr::main::studio_layout::side_by_side(), "Side by side"),
         (tr::main::studio_layout::round(), "Circle"),

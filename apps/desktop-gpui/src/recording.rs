@@ -2351,6 +2351,14 @@ fn validate_linux_camera_request(
 }
 
 pub async fn start(config: StartConfig) -> anyhow::Result<ActiveRecording> {
+    #[cfg(windows)]
+    let config = if crate::store::GeneralSettings::load().exclude_taskbar_area
+        && let Some(target) = crate::recording_taskbar::crop_target(&config.target)?
+    {
+        StartConfig { target, ..config }
+    } else {
+        config
+    };
     #[cfg(target_os = "linux")]
     if config.mode == RecordingMode::Instant {
         return start_tracked(config, InstantAttempt::new()).await;

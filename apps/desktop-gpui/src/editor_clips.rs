@@ -5076,6 +5076,7 @@ mod tests {
             end: 14.0,
             mode: cap_project::SceneMode::CameraOnly,
             split_layout: None,
+            camera_only_crop_zoom: None,
             transition_in: 0.3,
             transition_out: 0.3,
         }];

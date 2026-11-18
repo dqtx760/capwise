@@ -104,6 +104,7 @@ pub struct PersistedState {
     #[serde(default)]
     pub camera_avatar: cap_recording::avatar::AvatarKind,
     pub camera_window: Option<CameraWindowState>,
+    pub camera_preview_window_visible: Option<bool>,
     #[serde(default)]
     pub export: Option<ExportPrefs>,
     /// `screenshotEditorLayersPanelOpen` -- the Tauri screenshot editor keeps
@@ -1046,7 +1047,7 @@ pub struct GeneralSettings {
     pub studio_recording_quality: StudioQuality,
     pub recording_countdown: Option<u32>,
     #[cfg(windows)]
-    pub hide_taskbar_while_recording: bool,
+    pub exclude_taskbar_area: bool,
     pub main_window_recording_start_behaviour: MainWindowStartBehaviour,
     pub window_capture_style: WindowCaptureStyle,
     pub focus_center: bool,
@@ -1109,7 +1110,7 @@ pub const EDITOR_PREVIEW_SPEED_KEY: &str = "editorPreviewSpeed";
 
 pub const RECORDING_MARKER_SOUND_KEY: &str = "recordingMarkerSound";
 #[cfg(windows)]
-pub const HIDE_TASKBAR_WHILE_RECORDING_KEY: &str = "hideTaskbarWhileRecording";
+pub const EXCLUDE_TASKBAR_AREA_KEY: &str = "hideTaskbarWhileRecording";
 pub const SHOW_ADVANCED_SETTINGS_KEY: &str = "showAdvancedSettings";
 
 /// Read on every marker press, so it goes through the cached store rather
@@ -1506,7 +1507,7 @@ impl GeneralSettings {
             studio_recording_quality: enum_at(general, "studioRecordingQuality"),
             recording_countdown: opt_u32_at(general, "recordingCountdown"),
             #[cfg(windows)]
-            hide_taskbar_while_recording: bool_at(general, HIDE_TASKBAR_WHILE_RECORDING_KEY, false),
+            exclude_taskbar_area: bool_at(general, EXCLUDE_TASKBAR_AREA_KEY, false),
             main_window_recording_start_behaviour: enum_at(
                 general,
                 "mainWindowRecordingStartBehaviour",
@@ -4008,6 +4009,19 @@ mod tests {
 
 #[cfg(test)]
 mod avatar_tests {
+    #[test]
+    fn camera_preview_window_preference_defaults_to_visible_for_existing_state() {
+        let old_state = serde_json::json!({});
+        let parsed: super::PersistedState = serde_json::from_value(old_state).unwrap();
+        assert_eq!(parsed.camera_preview_window_visible, None);
+
+        let hidden: super::PersistedState = serde_json::from_value(serde_json::json!({
+            "camera_preview_window_visible": false
+        }))
+        .unwrap();
+        assert_eq!(hidden.camera_preview_window_visible, Some(false));
+    }
+
     #[test]
     fn cartoon_disables_processing_without_changing_camera_preferences() {
         let mut saved =

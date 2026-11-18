@@ -204,13 +204,19 @@ fps_30 = { text = "30 FPS", max_px = 180, size = 12 }
 fps_60 = { text = "60 FPS (Recommended)", max_px = 180, size = 12 }
 label = "Max capture framerate"
 
-[settings.general.recording.hide_taskbar]
-label = "Hide the Windows taskbar while recording"
-description = "Temporarily hide taskbars during screen and area recordings."
+[settings.general.recording.exclude_taskbar]
+label = "Exclude the Windows taskbar from recordings"
+description = "Record the display's work area, or the part of a selected area inside it."
 
 [settings.general.recording.marker_sound]
 description = "Plays a short sound when you add a marker while recording. Your microphone or system audio can pick it up."
 label = "Play a sound for markers"
+
+[settings.general.recording.camera_preview]
+title = "Camera preview"
+description = "Choose whether the floating camera preview is shown."
+label = "Show camera floating window"
+option_description = "Studio records the camera separately. Instant keeps the window visible because it is part of the screen capture."
 
 [settings.general.storage]
 choose_folder = { text = "Change…", context = "Button that picks a different folder." }
@@ -931,7 +937,7 @@ framing = "Camera framing"
 framing_fill = "Fill"
 framing_relaxed = "Relaxed"
 framing_fit = "Full frame"
-at_playhead = "Applies at the playhead"
+at_playhead = "Applies to selected video clips, or the clip at the playhead"
 side_by_side = "Side by side"
 round = "Circle"
 square = "Square"

@@ -3365,6 +3365,7 @@ impl SettingsWindow {
         sections.push(self.render_appearance(cx).into_any_element());
         sections.push(self.render_language(cx).into_any_element());
         sections.extend([self.render_recording(cx).into_any_element()]);
+        sections.push(self.render_camera_preview(cx).into_any_element());
         if self.settings.show_advanced_settings {
             sections.extend([
                 self.render_recording_advanced(cx).into_any_element(),
@@ -3375,6 +3376,37 @@ impl SettingsWindow {
             ]);
         }
         sections
+    }
+
+    fn render_camera_preview(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        use tr::settings::general::recording::camera_preview as text;
+
+        let visible = store::load().camera_preview_window_visible.unwrap_or(true);
+        let label = text::label();
+        let row = self.setting_row(
+            label,
+            Some(text::option_description()),
+            self.toggle(
+                "camera-preview-window-visible",
+                label,
+                visible,
+                cx,
+                |_, cx| {
+                    let visible = !store::load().camera_preview_window_visible.unwrap_or(true);
+                    cx.defer(move |cx: &mut gpui::App| {
+                        crate::app_windows::set_camera_preview_window_visible(visible, cx);
+                    });
+                    cx.notify();
+                },
+            )
+            .into_any_element(),
+        );
+        self.section(
+            text::title(),
+            Some(text::description()),
+            None,
+            vec![self.rows(vec![row]).into_any_element()],
+        )
     }
 
     fn update_workflow(
@@ -4083,17 +4115,17 @@ impl SettingsWindow {
         );
         #[cfg(windows)]
         let taskbar = self.setting_row(
-            tr::settings::general::recording::hide_taskbar::label(),
-            Some(tr::settings::general::recording::hide_taskbar::description()),
+            tr::settings::general::recording::exclude_taskbar::label(),
+            Some(tr::settings::general::recording::exclude_taskbar::description()),
             self.toggle(
-                "hide-taskbar-while-recording",
-                tr::settings::general::recording::hide_taskbar::label(),
-                settings.hide_taskbar_while_recording,
+                "exclude-taskbar-area",
+                tr::settings::general::recording::exclude_taskbar::label(),
+                settings.exclude_taskbar_area,
                 cx,
                 |this, cx| {
-                    let value = !this.settings.hide_taskbar_while_recording;
-                    this.settings.hide_taskbar_while_recording = value;
-                    this.write_bool(store::HIDE_TASKBAR_WHILE_RECORDING_KEY, value, cx);
+                    let value = !this.settings.exclude_taskbar_area;
+                    this.settings.exclude_taskbar_area = value;
+                    this.write_bool(store::EXCLUDE_TASKBAR_AREA_KEY, value, cx);
                 },
             )
             .into_any_element(),

@@ -481,8 +481,6 @@ pub struct RecordingSession {
     #[cfg(target_os = "linux")]
     terminal_operation: u64,
     pipeline_failed: bool,
-    #[cfg(windows)]
-    taskbar: Option<crate::recording_taskbar::RecordingTaskbar>,
     #[cfg(target_os = "linux")]
     stop_requested: bool,
     #[cfg(target_os = "linux")]
@@ -534,8 +532,6 @@ impl RecordingSession {
             #[cfg(target_os = "linux")]
             terminal_operation: 0,
             pipeline_failed: false,
-            #[cfg(windows)]
-            taskbar: None,
             #[cfg(target_os = "linux")]
             stop_requested: false,
             #[cfg(target_os = "linux")]
@@ -776,8 +772,6 @@ impl RecordingSession {
             return;
         }
         if !crate::menus::recording_start_allowed(cx) {
-            #[cfg(windows)]
-            drop(self.taskbar.take());
             cx.notify();
             return;
         }
@@ -930,24 +924,6 @@ impl RecordingSession {
             return;
         }
 
-        #[cfg(windows)]
-        {
-            use cap_recording::screen_capture::ScreenCaptureTarget;
-
-            let hide = matches!(
-                config.target,
-                ScreenCaptureTarget::Display { .. } | ScreenCaptureTarget::Area { .. }
-            ) && crate::store::GeneralSettings::load().hide_taskbar_while_recording;
-            if hide && self.taskbar.is_none() {
-                match crate::recording_taskbar::RecordingTaskbar::hide() {
-                    Ok(taskbar) => self.taskbar = taskbar,
-                    Err(error) => tracing::warn!(%error, "Could not hide Windows taskbars"),
-                }
-            } else if !hide {
-                drop(self.taskbar.take());
-            }
-        }
-
         #[cfg(target_os = "linux")]
         {
             self.instant_attempt = (config.mode == recording::RecordingMode::Instant)
@@ -1061,10 +1037,6 @@ impl RecordingSession {
                     this.stop_requested = false;
                     this.clean_control = CleanControlState::default();
                     this.show_controls_after_pause = false;
-                }
-                #[cfg(windows)]
-                if this.phase == Phase::Idle {
-                    drop(this.taskbar.take());
                 }
                 cx.notify();
             })
@@ -1431,8 +1403,6 @@ impl RecordingSession {
                         current.capture_stopped = true;
                         stop_sound.call_once(|| AppSound::StopRecording.play());
                         tracing::info!(path = %current.project_path.display(), "Studio capture stopped; editor preparation can begin");
-                        #[cfg(windows)]
-                        drop(this.taskbar.take());
                         cx.notify();
                     }
                 }).ok();
@@ -2157,8 +2127,6 @@ impl RecordingSession {
     }
 
     fn finish(&mut self, cx: &mut Context<Self>) {
-        #[cfg(windows)]
-        drop(self.taskbar.take());
         self.abort_start_cue();
         self.discard_primed(cx);
         self.primed_ready = None;

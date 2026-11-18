@@ -5423,12 +5423,20 @@ impl ProjectUniforms {
                         0.5
                     },
                 ];
+                let crop_zoom = scene
+                    .camera_only_crop_zoom
+                    .filter(|zoom| zoom.is_finite())
+                    .unwrap_or_else(|| project.camera.camera_only_crop_zoom())
+                    .clamp(
+                        cap_project::CAMERA_ONLY_CROP_ZOOM_MIN,
+                        cap_project::CAMERA_ONLY_CROP_ZOOM_MAX,
+                    );
                 let crop_bounds = fit_crop_to_target(
                     [0.0, 0.0],
                     frame_size,
                     output_aspect,
                     focal,
-                    project.camera.camera_only_crop_zoom() as f32,
+                    crop_zoom as f32,
                 );
                 let crop_bounds =
                     inset_crop_bounds(crop_bounds, frame_size, CAMERA_EDGE_CROP_INSET_PX);
@@ -5974,6 +5982,16 @@ mod tests {
             crop_zoom: Some(1.25),
             ..Default::default()
         };
+        let scene_segments = [cap_project::SceneSegment {
+            start: 0.0,
+            end: 1.0,
+            mode: SceneMode::CameraOnly,
+            split_layout: None,
+            camera_only_crop_zoom: Some(1.25),
+            transition_in: 0.0,
+            transition_out: 0.0,
+        }];
+        let scene = InterpolatedScene::new(SceneSegmentsCursor::new(0.5, &scene_segments));
         let uncropped = fit_crop_to_target(
             [0.0, 0.0],
             source,
@@ -5986,11 +6004,12 @@ mod tests {
             source,
             aspect,
             [0.5, 0.5],
-            zoomed_camera.camera_only_crop_zoom() as f32,
+            scene.camera_only_crop_zoom.unwrap() as f32,
         );
 
         assert_eq!(uncropped, [0.0, 0.0, 1920.0, 1080.0]);
         assert_eq!(cropped, [192.0, 108.0, 1728.0, 972.0]);
+        assert_eq!(zoomed_camera.camera_only_crop_zoom(), 1.25);
     }
 
     #[test]
@@ -6873,6 +6892,7 @@ mod style_image_tests {
             end: 1.4,
             mode: SceneMode::CameraOnly,
             split_layout: None,
+            camera_only_crop_zoom: None,
             transition_in: 0.0,
             transition_out: 0.0,
         });
@@ -11554,6 +11574,7 @@ mod project_uniforms_tests {
                 end: 4.0,
                 mode,
                 split_layout: None,
+                camera_only_crop_zoom: None,
                 transition_in: 0.5,
                 transition_out: 0.5,
             }];

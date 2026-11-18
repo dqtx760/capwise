@@ -365,11 +365,6 @@ fn app_runtime() -> tokio::runtime::Runtime {
 }
 
 fn main() {
-    #[cfg(windows)]
-    if recording_taskbar::run_watchdog_from_args() {
-        return;
-    }
-
     perf_marks::start();
     #[cfg(target_os = "linux")]
     if let Some(threads) = cap_utils::linux_runtime::llvmpipe_thread_count() {

@@ -4195,6 +4195,9 @@ pub fn begin_recording(mut config: StartConfig, cx: &mut App) {
         config.mode = RecordingMode::Studio;
         config.studio_layout = Default::default();
     }
+    if instant_capture_needs_camera_window(config.mode, &config.target, config.camera.is_some()) {
+        open_camera_window(cx);
+    }
     #[cfg(target_os = "linux")]
     {
         if let Some(lease) = cx.global::<AppWindows>().clean_capture.as_ref() {
@@ -4487,6 +4490,53 @@ pub fn close_camera_window(cx: &mut App) {
             .ok();
         refresh_target_overlays(cx);
     }
+}
+
+pub fn camera_preview_window_enabled(cx: &App) -> bool {
+    camera_preview_window_should_open(
+        crate::store::load().camera_preview_window_visible,
+        camera_preview_is_inline(cx),
+    )
+}
+
+pub fn set_camera_preview_window_visible(visible: bool, cx: &mut App) {
+    crate::store::update(|state| state.camera_preview_window_visible = Some(visible));
+
+    let session = RecordingSession::global(cx);
+    let phase = session.read(cx).phase;
+    let mode = session.read(cx).mode();
+    let instant_recording_active = phase != Phase::Idle && mode == Some(RecordingMode::Instant);
+    if visible {
+        if phase == Phase::Idle {
+            crate::feeds::Feeds::global(cx).update(cx, |feeds, cx| {
+                feeds.resume_camera_preview(cx);
+            });
+        }
+        if (phase == Phase::Idle || instant_recording_active)
+            && crate::feeds::Feeds::global(cx)
+                .read(cx)
+                .camera_actor()
+                .is_some()
+        {
+            open_camera_window(cx);
+        }
+    } else if !camera_preview_is_inline(cx) && !instant_recording_active {
+        close_camera_window(cx);
+    }
+}
+
+fn camera_preview_window_should_open(visible: Option<bool>, inline: bool) -> bool {
+    visible.unwrap_or(true) || inline
+}
+
+fn instant_capture_needs_camera_window(
+    mode: RecordingMode,
+    target: &ScreenCaptureTarget,
+    camera_selected: bool,
+) -> bool {
+    mode == RecordingMode::Instant
+        && camera_selected
+        && !matches!(target, ScreenCaptureTarget::CameraOnly)
 }
 
 fn camera_preview_is_inline(cx: &App) -> bool {
@@ -8646,6 +8696,41 @@ mod tests {
             paused: true,
         }));
         assert!(!camera_preview_can_be_parked(Phase::Stopping));
+    }
+
+    #[test]
+    fn camera_preview_visibility_only_hides_the_floating_window() {
+        assert!(camera_preview_window_should_open(None, false));
+        assert!(!camera_preview_window_should_open(Some(false), false));
+        assert!(camera_preview_window_should_open(Some(true), false));
+        assert!(camera_preview_window_should_open(Some(false), true));
+    }
+
+    #[test]
+    fn instant_screen_capture_keeps_its_camera_overlay_visible() {
+        let display = ScreenCaptureTarget::Display {
+            id: "1".parse().unwrap(),
+        };
+        assert!(instant_capture_needs_camera_window(
+            RecordingMode::Instant,
+            &display,
+            true
+        ));
+        assert!(!instant_capture_needs_camera_window(
+            RecordingMode::Instant,
+            &display,
+            false
+        ));
+        assert!(!instant_capture_needs_camera_window(
+            RecordingMode::Studio,
+            &display,
+            true
+        ));
+        assert!(!instant_capture_needs_camera_window(
+            RecordingMode::Instant,
+            &ScreenCaptureTarget::CameraOnly,
+            true
+        ));
     }
 
     #[test]

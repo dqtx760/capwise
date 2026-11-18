@@ -1729,12 +1729,12 @@ struct BlurBridge {
 }
 
 const CAMERA_LAYOUT_CHOICES: [(StudioLayout, Option<CameraShape>); 6] = [
+    (StudioLayout::CameraOnly, None),
     (StudioLayout::PictureInPicture, Some(CameraShape::Round)),
     (StudioLayout::PictureInPicture, Some(CameraShape::Square)),
     (StudioLayout::PictureInPicture, Some(CameraShape::Full)),
     (StudioLayout::ScreenLeft, None),
     (StudioLayout::CameraLeft, None),
-    (StudioLayout::CameraOnly, None),
 ];
 
 pub struct CameraWindow {
@@ -2756,10 +2756,9 @@ impl CameraWindow {
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
-        // Deselecting the camera is what closes the window (`Feeds` observes
-        // the selection); mirrors the Tauri close button closing the webview
-        // and the main window's selection following it.
-        Feeds::global(cx).update(cx, |feeds, cx| feeds.set_camera(None, cx));
+        cx.defer(|cx: &mut gpui::App| {
+            crate::app_windows::set_camera_preview_window_visible(false, cx);
+        });
     }
 
     // Mirrors `ControlButton`'s prop list; a config struct would just rename

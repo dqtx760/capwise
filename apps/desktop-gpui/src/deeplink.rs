@@ -390,11 +390,11 @@ impl DeepLinkAction {
                     feeds.set_microphone(mic_label.clone(), cx);
                 });
 
-                // Deferred behind `set_camera`'s own deferred
-                // `open_camera_window`, so a studio start finds the bubble
-                // already open and excludes it from capture
-                // (`begin_recording`'s `camera_window_number` read). gpui
-                // flushes deferred callbacks in FIFO order.
+                // Deferred behind `set_camera`'s preview decision: when the
+                // floating window is enabled, Studio excludes it from screen
+                // capture; when hidden, the selected camera feed still goes
+                // directly to the recorder. GPUI flushes deferred callbacks
+                // in FIFO order.
                 cx.defer(move |cx| {
                     if !permit.is_current(cx) {
                         let _ = main.update(cx, |view, _, _| view.finish_deep_link_start(&permit));

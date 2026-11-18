@@ -10,6 +10,7 @@ use gpui::{
 use crate::{
     editor_sidebar::SliderKey,
     editor_tabs::{CameraSlider, OpenMenu, SidebarMenu},
+    editor_timeline::{self, TrackKind},
     editor_window::EditorWindow,
     i18n::tr,
     recording_defaults::StudioLayout,
@@ -46,6 +47,11 @@ fn parse_ratio(width: &str, height: &str) -> Option<XY<u32>> {
 
 const LAYOUT_CHOICES: [(StudioLayout, fn() -> &'static str, &str); 4] = [
     (
+        StudioLayout::CameraOnly,
+        tr::main::studio_layout::camera_only,
+        "icons/crop.svg",
+    ),
+    (
         StudioLayout::PictureInPicture,
         tr::main::studio_layout::pip,
         "icons/app-window.svg",
@@ -59,11 +65,6 @@ const LAYOUT_CHOICES: [(StudioLayout, fn() -> &'static str, &str); 4] = [
         StudioLayout::CameraLeft,
         tr::main::studio_layout::camera_left,
         "icons/panel-left.svg",
-    ),
-    (
-        StudioLayout::CameraOnly,
-        tr::main::studio_layout::camera_only,
-        "icons/crop.svg",
     ),
 ];
 
@@ -90,6 +91,200 @@ fn camera_scene_at(scenes: &[SceneSegment], time: f64) -> Option<usize> {
     scenes
         .iter()
         .position(|scene| time >= scene.start && time < scene.end)
+}
+
+fn camera_scene_ranges(
+    selection: Option<&crate::editor_edits::Selection>,
+    clips: &[(f64, f64)],
+    playhead: f64,
+    total_duration: f64,
+) -> Vec<(f64, f64)> {
+    if !total_duration.is_finite() || total_duration <= 0.0 {
+        return Vec::new();
+    }
+
+    let mut ranges = selection
+        .filter(|selection| selection.track == TrackKind::Clip)
+        .into_iter()
+        .flat_map(|selection| selection.indices.iter())
+        .filter_map(|index| clips.get(*index))
+        .filter(|(start, end)| start.is_finite() && end.is_finite())
+        .map(|(start, end)| (start.max(0.0), end.min(total_duration)))
+        .filter(|(start, end)| end > start)
+        .collect::<Vec<_>>();
+
+    if ranges.is_empty()
+        && let Some(&(start, end)) = clips
+            .iter()
+            .filter(|(start, end)| playhead >= *start && playhead < *end)
+            .max_by(|left, right| left.0.total_cmp(&right.0))
+    {
+        ranges.push((start.max(0.0), end.min(total_duration)));
+    }
+
+    ranges.sort_by(|left, right| left.0.total_cmp(&right.0));
+    let mut merged = Vec::<(f64, f64)>::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        if let Some(previous) = merged.last_mut()
+            && start <= previous.1
+        {
+            previous.1 = previous.1.max(end);
+        } else {
+            merged.push((start, end));
+        }
+    }
+    merged
+}
+
+fn scene_layout_matches_at(scenes: &[SceneSegment], time: f64, choice: StudioLayout) -> bool {
+    let scene = scenes
+        .iter()
+        .find(|scene| time >= scene.start && time < scene.end);
+    match choice {
+        StudioLayout::PictureInPicture => {
+            scene.is_none_or(|scene| matches!(scene.mode, SceneMode::Default))
+        }
+        StudioLayout::CameraOnly => {
+            scene.is_some_and(|scene| matches!(scene.mode, SceneMode::CameraOnly))
+        }
+        StudioLayout::ScreenLeft | StudioLayout::CameraLeft => scene.is_some_and(|scene| {
+            matches!(scene.mode, SceneMode::SplitScreen | SceneMode::Floating)
+                && scene.split_layout.is_some_and(|layout| {
+                    layout.force_horizontal
+                        && layout.camera_first == (choice == StudioLayout::CameraLeft)
+                })
+        }),
+    }
+}
+
+fn scene_range_matches_layout(
+    scenes: &[SceneSegment],
+    range: (f64, f64),
+    choice: StudioLayout,
+) -> bool {
+    let mut boundaries = vec![range.0, range.1];
+    for scene in scenes {
+        if scene.start < range.1 && scene.end > range.0 {
+            boundaries.push(scene.start.clamp(range.0, range.1));
+            boundaries.push(scene.end.clamp(range.0, range.1));
+        }
+    }
+    boundaries.sort_by(f64::total_cmp);
+    boundaries.dedup_by(|left, right| *left == *right);
+    boundaries
+        .windows(2)
+        .all(|window| scene_layout_matches_at(scenes, (window[0] + window[1]) / 2.0, choice))
+}
+
+fn scene_layout_mismatch_ranges(
+    scenes: &[SceneSegment],
+    ranges: &[(f64, f64)],
+    choice: StudioLayout,
+) -> Vec<(f64, f64)> {
+    let mut mismatches = Vec::<(f64, f64)>::new();
+    for &(start, end) in ranges {
+        if scene_range_matches_layout(scenes, (start, end), choice) {
+            continue;
+        }
+        let mut boundaries = vec![start, end];
+        for scene in scenes {
+            if scene.start < end && scene.end > start {
+                boundaries.push(scene.start.clamp(start, end));
+                boundaries.push(scene.end.clamp(start, end));
+            }
+        }
+        boundaries.sort_by(f64::total_cmp);
+        boundaries.dedup_by(|left, right| *left == *right);
+        for window in boundaries.windows(2) {
+            if window[1] <= window[0]
+                || scene_layout_matches_at(scenes, (window[0] + window[1]) / 2.0, choice)
+            {
+                continue;
+            }
+            if let Some(previous) = mismatches.last_mut()
+                && previous.1 == window[0]
+            {
+                previous.1 = window[1];
+            } else {
+                mismatches.push((window[0], window[1]));
+            }
+        }
+    }
+    mismatches
+}
+
+fn scene_outside_ranges(scene: &SceneSegment, ranges: &[(f64, f64)]) -> Vec<SceneSegment> {
+    let mut pieces = vec![scene.clone()];
+    for &(range_start, range_end) in ranges {
+        let mut next_pieces = Vec::with_capacity(pieces.len() + 1);
+        for mut piece in pieces {
+            if piece.end <= range_start || piece.start >= range_end {
+                next_pieces.push(piece);
+                continue;
+            }
+
+            if piece.start < range_start {
+                let mut before = piece.clone();
+                before.end = range_start;
+                before.transition_out = 0.0;
+                before.transition_in = before.transition_in.clamp(0.0, before.end - before.start);
+                next_pieces.push(before);
+            }
+            if piece.end > range_end {
+                piece.start = range_end;
+                piece.transition_in = 0.0;
+                piece.transition_out = piece.transition_out.clamp(0.0, piece.end - piece.start);
+                next_pieces.push(piece);
+            }
+        }
+        pieces = next_pieces;
+    }
+    pieces
+}
+
+fn apply_scene_layout(
+    scenes: &mut Vec<SceneSegment>,
+    ranges: &[(f64, f64)],
+    choice: StudioLayout,
+) -> bool {
+    let ranges = scene_layout_mismatch_ranges(scenes, ranges, choice);
+    if ranges.is_empty() {
+        return false;
+    }
+
+    let mut updated = scenes
+        .iter()
+        .flat_map(|scene| scene_outside_ranges(scene, &ranges))
+        .collect::<Vec<_>>();
+    for (start, end) in ranges {
+        let (mode, split_layout) = match choice {
+            StudioLayout::PictureInPicture => (SceneMode::Default, None),
+            StudioLayout::CameraOnly => (SceneMode::CameraOnly, None),
+            StudioLayout::ScreenLeft | StudioLayout::CameraLeft => (
+                SceneMode::Floating,
+                Some(cap_project::SplitLayout {
+                    camera_first: choice == StudioLayout::CameraLeft,
+                    force_horizontal: true,
+                    camera_framing: SplitCameraFraming::Relaxed,
+                    fit_screen: true,
+                    ..Default::default()
+                }),
+            ),
+        };
+        updated.push(SceneSegment {
+            start,
+            end,
+            mode,
+            split_layout,
+            camera_only_crop_zoom: (choice == StudioLayout::CameraOnly)
+                .then_some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM),
+            transition_in: 0.0,
+            transition_out: 0.0,
+        });
+    }
+    updated.sort_by(|left, right| left.start.total_cmp(&right.start));
+    *scenes = updated;
+    true
 }
 
 fn scene_camera_layout(scene: &SceneSegment) -> Option<StudioLayout> {
@@ -234,10 +429,15 @@ impl EditorWindow {
                 ),
             );
         }
-        if scene.is_some_and(|scene| matches!(scene.mode, SceneMode::CameraOnly)) {
+        if scene.is_some_and(|scene| matches!(scene.mode, SceneMode::CameraOnly))
+            && let Some(index) = self.camera_scene_index_at(self.playhead_time())
+        {
             column = column.child(self.slider_field(
                 tr::main::studio_layout::crop_zoom(),
-                SliderKey::Camera(CameraSlider::CropZoom),
+                SliderKey::Panel(
+                    crate::editor_panels::PanelSlider::SceneCameraOnlyZoom,
+                    index,
+                ),
                 "zoom",
                 cx,
             ));
@@ -264,7 +464,30 @@ impl EditorWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let time = self.playhead_time();
+        let total_duration = self.total_duration();
+        let ranges = if self.project.timeline.is_none() && choice != StudioLayout::PictureInPicture
+        {
+            if total_duration.is_finite() && total_duration > 0.0 {
+                vec![(0.0, total_duration)]
+            } else {
+                Vec::new()
+            }
+        } else {
+            camera_scene_ranges(
+                self.selection(),
+                &self
+                    .project
+                    .timeline
+                    .as_ref()
+                    .map(editor_timeline::clip_output_ranges)
+                    .unwrap_or_default(),
+                self.playhead_time(),
+                total_duration,
+            )
+        };
+        if ranges.is_empty() {
+            return;
+        }
         let durations = self.clip_display_durations.clone();
         self.edit_project_global("camera-scene-layout", window, cx, |project| {
             if project.timeline.is_none() && choice != StudioLayout::PictureInPicture {
@@ -273,75 +496,11 @@ impl EditorWindow {
             let Some(timeline) = project.timeline.as_mut() else {
                 return false;
             };
-            let end = timeline.duration();
-            if !end.is_finite() || end <= 0. {
-                return false;
-            }
-            let time = camera_scene_time(time, end);
-            let scene = if let Some(index) = camera_scene_at(&timeline.scene_segments, time) {
-                &mut timeline.scene_segments[index]
+            if apply_scene_layout(&mut timeline.scene_segments, &ranges, choice) {
+                true
             } else {
-                if choice == StudioLayout::PictureInPicture {
-                    return false;
-                }
-                let index = timeline
-                    .scene_segments
-                    .partition_point(|scene| scene.end <= time);
-                let start = index
-                    .checked_sub(1)
-                    .map_or(0., |prev| timeline.scene_segments[prev].end);
-                let end = timeline
-                    .scene_segments
-                    .get(index)
-                    .map_or(end, |next| next.start);
-                timeline.scene_segments.insert(
-                    index,
-                    SceneSegment {
-                        start,
-                        end,
-                        mode: SceneMode::Default,
-                        split_layout: None,
-                        transition_in: 0.,
-                        transition_out: 0.,
-                    },
-                );
-                &mut timeline.scene_segments[index]
-            };
-
-            if scene_camera_layout(scene) == Some(choice)
-                && (matches!(
-                    choice,
-                    StudioLayout::PictureInPicture | StudioLayout::CameraOnly
-                ) || scene
-                    .split_layout
-                    .is_some_and(|layout| layout.force_horizontal))
-            {
-                return false;
+                false
             }
-            if choice == StudioLayout::PictureInPicture {
-                scene.mode = SceneMode::Default;
-            } else if choice == StudioLayout::CameraOnly {
-                scene.mode = SceneMode::CameraOnly;
-                scene.split_layout = None;
-                project
-                    .camera
-                    .crop_zoom
-                    .get_or_insert(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM);
-            } else {
-                if !matches!(scene.mode, SceneMode::SplitScreen | SceneMode::Floating) {
-                    scene.mode = SceneMode::Floating;
-                }
-                let layout = scene
-                    .split_layout
-                    .get_or_insert_with(|| cap_project::SplitLayout {
-                        camera_framing: SplitCameraFraming::Relaxed,
-                        fit_screen: true,
-                        ..Default::default()
-                    });
-                layout.force_horizontal = true;
-                layout.camera_first = choice == StudioLayout::CameraLeft;
-            }
-            true
         });
     }
 
@@ -753,6 +912,7 @@ mod tests {
             end: 1.0,
             mode,
             split_layout,
+            camera_only_crop_zoom: None,
             transition_in: 0.0,
             transition_out: 0.0,
         };
@@ -780,6 +940,123 @@ mod tests {
             None
         );
         assert!(!StudioLayout::CameraOnly.is_split());
+    }
+
+    #[test]
+    fn camera_layout_targets_selected_clips_or_the_clip_at_the_playhead() {
+        let clips = [(0.0, 4.0), (4.0, 8.0), (8.0, 12.0)];
+        let selected = crate::editor_edits::Selection {
+            track: TrackKind::Clip,
+            indices: vec![1],
+        };
+        assert_eq!(
+            camera_scene_ranges(Some(&selected), &clips, 1.0, 12.0),
+            [(4.0, 8.0)]
+        );
+        assert_eq!(camera_scene_ranges(None, &clips, 5.0, 12.0), [(4.0, 8.0)]);
+    }
+
+    #[test]
+    fn camera_layout_preserves_matching_and_unselected_scene_framing() {
+        let split_layout = cap_project::SplitLayout {
+            camera_first: true,
+            camera_zoom: 2.0,
+            ..Default::default()
+        };
+        let mut scenes = vec![
+            SceneSegment {
+                start: 0.0,
+                end: 4.0,
+                mode: SceneMode::CameraOnly,
+                camera_only_crop_zoom: Some(1.75),
+                transition_in: 0.2,
+                transition_out: 0.2,
+                ..make_default_scene()
+            },
+            SceneSegment {
+                start: 4.0,
+                end: 8.0,
+                mode: SceneMode::Default,
+                ..make_default_scene()
+            },
+            SceneSegment {
+                start: 8.0,
+                end: 12.0,
+                mode: SceneMode::Floating,
+                split_layout: Some(split_layout),
+                ..make_default_scene()
+            },
+        ];
+
+        assert!(apply_scene_layout(
+            &mut scenes,
+            &[(0.0, 4.0), (4.0, 8.0)],
+            StudioLayout::CameraOnly
+        ));
+        assert_eq!(scenes.len(), 3);
+        assert_eq!(scenes[0].camera_only_crop_zoom, Some(1.75));
+        assert_eq!(scenes[0].transition_in, 0.2);
+        assert!(matches!(scenes[1].mode, SceneMode::CameraOnly));
+        assert_eq!(
+            scenes[1].camera_only_crop_zoom,
+            Some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM)
+        );
+        assert!(matches!(scenes[2].mode, SceneMode::Floating));
+        assert!(
+            scenes[2]
+                .split_layout
+                .is_some_and(|layout| layout.camera_first && layout.camera_zoom == 2.0)
+        );
+        assert!(!apply_scene_layout(
+            &mut scenes,
+            &[(0.0, 4.0)],
+            StudioLayout::CameraOnly
+        ));
+    }
+
+    #[test]
+    fn replacing_a_clipped_scene_keeps_outer_transitions_outside_the_clip() {
+        let mut scenes = vec![SceneSegment {
+            start: 0.0,
+            end: 12.0,
+            mode: SceneMode::Default,
+            transition_in: 0.4,
+            transition_out: 0.4,
+            ..make_default_scene()
+        }];
+        assert!(apply_scene_layout(
+            &mut scenes,
+            &[(4.0, 8.0)],
+            StudioLayout::CameraOnly
+        ));
+        assert_eq!(scenes.len(), 3);
+        assert_eq!((scenes[0].start, scenes[0].end), (0.0, 4.0));
+        assert_eq!(
+            (scenes[0].transition_in, scenes[0].transition_out),
+            (0.4, 0.0)
+        );
+        assert_eq!((scenes[1].start, scenes[1].end), (4.0, 8.0));
+        assert_eq!(
+            (scenes[1].transition_in, scenes[1].transition_out),
+            (0.0, 0.0)
+        );
+        assert_eq!((scenes[2].start, scenes[2].end), (8.0, 12.0));
+        assert_eq!(
+            (scenes[2].transition_in, scenes[2].transition_out),
+            (0.0, 0.4)
+        );
+    }
+
+    fn make_default_scene() -> SceneSegment {
+        SceneSegment {
+            start: 0.0,
+            end: 1.0,
+            mode: SceneMode::Default,
+            split_layout: None,
+            camera_only_crop_zoom: None,
+            transition_in: 0.0,
+            transition_out: 0.0,
+        }
     }
 
     #[test]

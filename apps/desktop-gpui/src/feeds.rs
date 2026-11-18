@@ -1249,7 +1249,11 @@ impl Feeds {
             .ok();
         })
         .detach();
-        cx.defer(app_windows::open_camera_window);
+        cx.defer(|cx| {
+            if app_windows::camera_preview_window_enabled(cx) {
+                app_windows::open_camera_window(cx);
+            }
+        });
     }
 
     fn remove_camera_input(&self, cx: &Context<Self>) {

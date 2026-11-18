@@ -201,13 +201,19 @@ fps_30 = "30 i/s"
 fps_60 = "60 i/s (recommandé)"
 label = "Fréquence d'images maximale"
 
-[settings.general.recording.hide_taskbar]
-label = "Masquer la barre des tâches de Windows pendant l’enregistrement"
-description = "Masque temporairement les barres des tâches lors de la capture de l’écran ou d’une zone."
+[settings.general.recording.exclude_taskbar]
+label = "Exclure la barre des tâches de Windows des enregistrements"
+description = "Enregistre la zone de travail de l’écran ou la partie de la sélection qui s’y trouve."
 
 [settings.general.recording.marker_sound]
 description = "Émet un son bref lorsque vous ajoutez un repère pendant un enregistrement Studio. Votre micro ou le son du système peuvent l'enregistrer."
 label = "Émettre un son pour les repères"
+
+[settings.general.recording.camera_preview]
+title = "Aperçu de la caméra"
+description = "Choisissez si l’aperçu flottant de la caméra s’affiche."
+label = "Afficher la fenêtre flottante de la caméra"
+option_description = "Studio enregistre la caméra séparément. Instant garde la fenêtre visible car elle fait partie de la capture d’écran."
 
 [settings.general.storage]
 choose_folder = "Choisir un dossier"
@@ -917,7 +923,7 @@ framing = "Cadrage caméra"
 framing_fill = "Remplir"
 framing_relaxed = "Plan élargi"
 framing_fit = "Image entière"
-at_playhead = "S’applique à la tête de lecture"
+at_playhead = "S’applique aux clips vidéo sélectionnés ou au clip à la tête de lecture"
 side_by_side = "Côte à côte"
 round = "Cercle"
 square = "Carré"
