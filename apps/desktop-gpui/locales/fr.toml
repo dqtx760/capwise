@@ -2970,6 +2970,7 @@ prompt = "Ajoutez des plans 3D cinématiques à votre enregistrement"
 
 [editor.window.clip_menu]
 more = "Plus de réglages"
+settings = "Réglages du clip"
 audio = "AUDIO"
 delete = "Supprimer le clip"
 delete_only_clip = "Impossible de supprimer le seul clip"

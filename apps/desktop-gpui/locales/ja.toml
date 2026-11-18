@@ -2970,6 +2970,7 @@ prompt = "録画に映画のような3Dショットを追加"
 
 [editor.window.clip_menu]
 more = "詳細設定"
+settings = "クリップ設定"
 audio = "音声"
 delete = "クリップを削除"
 delete_only_clip = "唯一のクリップは削除できません"

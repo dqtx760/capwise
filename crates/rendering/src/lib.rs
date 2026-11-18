@@ -4508,12 +4508,6 @@ impl ProjectUniforms {
             frame_number,
             true,
         );
-        let camera_color_grade = ColorGradeUniformParams::from_config(
-            &project.color_correction.camera,
-            frame_number,
-            false,
-        );
-
         let cursor_stop_time = project
             .cursor
             .stop_movement_in_last_seconds
@@ -4579,7 +4573,13 @@ impl ProjectUniforms {
         };
         let motion_prev_zoom = zoom_timeline.sample(motion_prev_frame_time);
 
-        let scene = InterpolatedScene::new(SceneSegmentsCursor::new(timeline_time, scene_segments));
+        let scene_cursor = SceneSegmentsCursor::new(timeline_time, scene_segments);
+        let camera_color_correction = scene_cursor
+            .camera_color_correction()
+            .unwrap_or(&project.color_correction.camera);
+        let camera_color_grade =
+            ColorGradeUniformParams::from_config(camera_color_correction, frame_number, false);
+        let scene = InterpolatedScene::new(scene_cursor);
         let prev_scene = InterpolatedScene::new(SceneSegmentsCursor::new(
             f64::from(frame_number.saturating_sub(1)) / f64::from(fps.max(1)),
             scene_segments,
@@ -5988,6 +5988,7 @@ mod tests {
             mode: SceneMode::CameraOnly,
             split_layout: None,
             camera_only_crop_zoom: Some(1.25),
+            camera_color_correction: None,
             transition_in: 0.0,
             transition_out: 0.0,
         }];
@@ -6893,6 +6894,7 @@ mod style_image_tests {
             mode: SceneMode::CameraOnly,
             split_layout: None,
             camera_only_crop_zoom: None,
+            camera_color_correction: None,
             transition_in: 0.0,
             transition_out: 0.0,
         });
@@ -11575,6 +11577,7 @@ mod project_uniforms_tests {
                 mode,
                 split_layout: None,
                 camera_only_crop_zoom: None,
+                camera_color_correction: None,
                 transition_in: 0.5,
                 transition_out: 0.5,
             }];

@@ -2970,6 +2970,7 @@ prompt = "Fügen Sie Ihrer Aufnahme filmische 3D-Einstellungen hinzu"
 
 [editor.window.clip_menu]
 more = "Weitere Einstellungen"
+settings = "Clip-Einstellungen"
 audio = "AUDIO"
 delete = "Clip löschen"
 delete_only_clip = "Der einzige Clip kann nicht gelöscht werden"

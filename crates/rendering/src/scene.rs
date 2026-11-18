@@ -1,4 +1,4 @@
-use cap_project::{SceneMode, SceneSegment};
+use cap_project::{ColorCorrection, SceneMode, SceneSegment};
 
 pub const MIN_GAP_FOR_TRANSITION: f64 = 0.5;
 
@@ -55,6 +55,12 @@ impl<'a> SceneSegmentsCursor<'a> {
     pub fn next_segment(&self) -> Option<&'a SceneSegment> {
         let current_time = self.time;
         self.segments.iter().find(|s| s.start > current_time)
+    }
+
+    pub(crate) fn camera_color_correction(&self) -> Option<&'a ColorCorrection> {
+        self.segment
+            .filter(|segment| matches!(segment.mode, SceneMode::CameraOnly))
+            .and_then(|segment| segment.camera_color_correction.as_ref())
     }
 }
 
@@ -395,6 +401,7 @@ mod tests {
             mode: SceneMode::CameraOnly,
             split_layout: None,
             camera_only_crop_zoom: None,
+            camera_color_correction: None,
             transition_in: transition,
             transition_out: transition,
         }
@@ -407,6 +414,42 @@ mod tests {
             ..camera_scene(0.0)
         };
         assert_eq!(scene_at(3.0, &[scene]).camera_only_crop_zoom, Some(1.75));
+    }
+
+    #[test]
+    fn camera_only_color_correction_is_limited_to_the_active_scene() {
+        let grade = ColorCorrection::default();
+        let scenes = [
+            SceneSegment {
+                start: 0.0,
+                end: 2.0,
+                mode: SceneMode::Default,
+                ..camera_scene(0.3)
+            },
+            SceneSegment {
+                end: 4.0,
+                camera_color_correction: Some(grade.clone()),
+                ..camera_scene(0.3)
+            },
+        ];
+        for time in [1.0, 1.99, 4.0, 4.5] {
+            assert!(
+                SceneSegmentsCursor::new(time, &scenes)
+                    .camera_color_correction()
+                    .is_none()
+            );
+        }
+        for time in [2.0, 3.0, 3.99] {
+            assert_eq!(
+                SceneSegmentsCursor::new(time, &scenes).camera_color_correction(),
+                Some(&grade)
+            );
+        }
+        assert!(
+            SceneSegmentsCursor::new(1.9, &scenes[1..])
+                .camera_color_correction()
+                .is_none()
+        );
     }
 
     #[test]

@@ -823,6 +823,7 @@ pub struct SidebarState {
     /// `state.selectedTab` (`:563-573`).
     pub tab: SidebarTab,
     frame_tab: FrameTab,
+    pub(crate) clip_camera_controls: bool,
     pub caption_tab: crate::editor_workbench::CaptionTab,
     pub caption_page: usize,
     pub(crate) caption_reveal: Option<usize>,
@@ -951,6 +952,7 @@ impl SidebarState {
             animated_gradient: animated_gradient::AnimatedGradientState::new(),
             tab: SidebarTab::Captions,
             frame_tab: FrameTab::default(),
+            clip_camera_controls: false,
             caption_tab: crate::editor_workbench::CaptionTab::Content,
             caption_page: 0,
             caption_reveal: None,
@@ -1088,9 +1090,24 @@ pub enum PanelSection {
 
 impl EditorWindow {
     pub fn sidebar_selection(&self) -> Option<&crate::editor_edits::Selection> {
-        self.selection
-            .as_ref()
-            .filter(|selection| selection.track != TrackKind::Clip || selection.indices.len() == 1)
+        self.selection.as_ref().filter(|selection| {
+            selection.track != TrackKind::Clip
+                || (selection.indices.len() == 1 && !self.sidebar.clip_camera_controls)
+        })
+    }
+
+    pub(crate) fn reveal_clip_camera_controls(&mut self, cx: &mut Context<Self>) {
+        if !(self.sidebar.clip_camera_controls && self.camera_controls_visible()) {
+            self.dismiss_sidebar_panels(cx);
+            self.sidebar.scroll.set_offset(gpui::point(px(0.), px(0.)));
+        }
+        self.sidebar.clip_camera_controls = true;
+        self.sidebar.tab = SidebarTab::Background;
+        self.sidebar.frame_tab = FrameTab::Camera;
+        self.assistant.open = false;
+        self.assistant.model_menu = false;
+        self.assistant.skill_menu = false;
+        cx.notify();
     }
 
     /// The tab rail's click: clear any selection, then switch tab and put the
@@ -1130,7 +1147,9 @@ impl EditorWindow {
             }
             return;
         }
-        if self.sidebar_selection().is_some() {
+        if self.sidebar_selection().is_some()
+            || (self.sidebar.clip_camera_controls && tab != SidebarTab::Background)
+        {
             self.set_selection(None, cx);
         }
         self.sidebar.title_cards.empty_role = None;

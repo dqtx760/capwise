@@ -1553,6 +1553,8 @@ pub struct SceneSegment {
     pub split_layout: Option<SplitLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera_only_crop_zoom: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera_color_correction: Option<ColorCorrection>,
     #[serde(default = "default_scene_transition")]
     pub transition_in: f64,
     #[serde(default = "default_scene_transition")]

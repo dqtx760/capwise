@@ -38,7 +38,7 @@
 use std::sync::{Arc, OnceLock};
 
 pub use cap_gpui_kernels::texture::{Filter, Overlay};
-use cap_project::{ColorCorrection, ProjectConfiguration};
+use cap_project::ColorCorrection;
 use gpui::{
     AnyElement, Context, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
     RenderImage, SharedString, StatefulInteractiveElement, Styled, StyledImage, Window, div, img,
@@ -326,10 +326,6 @@ pub enum GradeSlider {
 }
 
 impl GradeSlider {
-    /// Whether this slider writes a field
-    /// [`crate::editor_timeline::TimelineModel::build`] or
-    /// [`crate::editor_timeline::TrackLanes::from_project`] reads. The match
-    /// is exhaustive so a new slider has to make the choice explicitly.
     pub(crate) fn changes_timeline_model(self) -> bool {
         match self {
             Self::Grain
@@ -453,15 +449,45 @@ impl EditorWindow {
     pub(crate) fn grade(&self, target: GradeTarget) -> &ColorCorrection {
         match target {
             GradeTarget::Screen => &self.project.color_correction.screen,
-            GradeTarget::Camera => &self.project.color_correction.camera,
+            GradeTarget::Camera => self
+                .camera_only_scene_for_edit_ranges(&self.camera_scene_edit_ranges())
+                .and_then(|scene| scene.camera_color_correction.as_ref())
+                .unwrap_or(&self.project.color_correction.camera),
         }
     }
 
-    fn grade_mut(project: &mut ProjectConfiguration, target: GradeTarget) -> &mut ColorCorrection {
-        match target {
-            GradeTarget::Screen => &mut project.color_correction.screen,
-            GradeTarget::Camera => &mut project.color_correction.camera,
+    fn edit_grade(
+        &mut self,
+        target: GradeTarget,
+        rebuild_timeline: bool,
+        reason: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        mut change: impl FnMut(&mut ColorCorrection) -> bool,
+    ) {
+        if target == GradeTarget::Camera {
+            let ranges = self.camera_scene_edit_ranges();
+            if self.camera_only_scene_for_edit_ranges(&ranges).is_some() {
+                self.edit_project_global(reason, window, cx, move |project| {
+                    project.timeline.as_mut().is_some_and(|timeline| {
+                        crate::editor_camera_framing::edit_camera_only_color_correction_ranges(
+                            &mut timeline.scene_segments,
+                            &ranges,
+                            &project.color_correction.camera,
+                            change,
+                        )
+                        .unwrap_or(false)
+                    })
+                });
+                return;
+            }
         }
+        self.edit_project_with_rebuild(rebuild_timeline, reason, window, cx, move |project| {
+            change(match target {
+                GradeTarget::Screen => &mut project.color_correction.screen,
+                GradeTarget::Camera => &mut project.color_correction.camera,
+            })
+        });
     }
 
     /// `applyPreset` (`ColorCorrectionSection.tsx:88-93`): the preset id **and**
@@ -478,8 +504,7 @@ impl EditorWindow {
         };
         let values = preset.values;
         let id = preset.id;
-        self.edit_project("color-preset", window, cx, move |project| {
-            let grade = Self::grade_mut(project, target);
+        self.edit_grade(target, true, "color-preset", window, cx, move |grade| {
             let next = ColorCorrection {
                 preset: id.to_string(),
                 intensity: values.intensity,
@@ -511,13 +536,13 @@ impl EditorWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.edit_project_with_rebuild(
+        self.edit_grade(
+            target,
             slider.changes_timeline_model(),
             "grade",
             window,
             cx,
-            move |project| {
-                let grade = Self::grade_mut(project, target);
+            move |grade| {
                 if (slider.read(grade) - value).abs() < f32::EPSILON {
                     return false;
                 }

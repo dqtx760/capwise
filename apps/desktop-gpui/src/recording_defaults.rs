@@ -97,6 +97,8 @@ impl StudioLayout {
             }),
             camera_only_crop_zoom: (self == Self::CameraOnly)
                 .then_some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM),
+            camera_color_correction: (self == Self::CameraOnly)
+                .then_some(cap_project::ColorCorrection::default()),
             transition_in: 0.0,
             transition_out: 0.0,
         });

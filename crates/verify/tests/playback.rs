@@ -217,6 +217,7 @@ fn hide_camera_scene(config: &mut ProjectConfiguration) {
             mode: cap_project::SceneMode::HideCamera,
             split_layout: None,
             camera_only_crop_zoom: None,
+            camera_color_correction: None,
             transition_in: 0.3,
             transition_out: 0.3,
         });

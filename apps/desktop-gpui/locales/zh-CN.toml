@@ -3009,6 +3009,7 @@ prompt = "为你的录制添加电影感 3D 镜头"
 
 [editor.window.clip_menu]
 more = "更多设置"
+settings = "片段设置"
 audio = "音频"
 delete = "删除片段"
 delete_only_clip = "无法删除唯一的片段"

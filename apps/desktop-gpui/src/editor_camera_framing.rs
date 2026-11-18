@@ -1,5 +1,6 @@
 use cap_project::{
-    Camera, CameraShape, CornerStyle, SceneMode, SceneSegment, SplitCameraFraming, XY,
+    Camera, CameraShape, ColorCorrection, CornerStyle, SceneMode, SceneSegment, SplitCameraFraming,
+    XY,
 };
 use gpui::{
     AnyElement, AppContext, Context, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
@@ -242,6 +243,80 @@ fn scene_outside_ranges(scene: &SceneSegment, ranges: &[(f64, f64)]) -> Vec<Scen
     pieces
 }
 
+pub(crate) fn edit_camera_only_color_correction_ranges(
+    scenes: &mut Vec<SceneSegment>,
+    ranges: &[(f64, f64)],
+    fallback: &ColorCorrection,
+    mut edit: impl FnMut(&mut ColorCorrection) -> bool,
+) -> Option<bool> {
+    let mut matched = false;
+    let mut changed = false;
+    let mut updated = Vec::with_capacity(scenes.len());
+
+    for scene in scenes.iter() {
+        let intersections = if matches!(scene.mode, SceneMode::CameraOnly) {
+            ranges
+                .iter()
+                .filter_map(|&(start, end)| {
+                    let start = start.max(scene.start);
+                    let end = end.min(scene.end);
+                    (end > start).then_some((start, end))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        if intersections.is_empty() {
+            updated.push(scene.clone());
+            continue;
+        }
+        matched = true;
+
+        let mut changed_ranges = Vec::new();
+        let mut grades = Vec::new();
+        for &(start, end) in &intersections {
+            let mut grade = scene
+                .camera_color_correction
+                .clone()
+                .unwrap_or_else(|| fallback.clone());
+            if edit(&mut grade) {
+                changed_ranges.push((start, end));
+                grades.push(grade);
+                changed = true;
+            }
+        }
+
+        if changed_ranges.is_empty() {
+            updated.push(scene.clone());
+            continue;
+        }
+        updated.extend(scene_outside_ranges(scene, &changed_ranges));
+        for ((start, end), grade) in changed_ranges.into_iter().zip(grades) {
+            let mut segment = scene.clone();
+            segment.start = start;
+            segment.end = end;
+            segment.transition_in = if start == scene.start {
+                scene.transition_in
+            } else {
+                0.0
+            };
+            segment.transition_out = if end == scene.end {
+                scene.transition_out
+            } else {
+                0.0
+            };
+            segment.camera_color_correction = Some(grade);
+            updated.push(segment);
+        }
+    }
+
+    if changed {
+        updated.sort_by(|left, right| left.start.total_cmp(&right.start));
+        *scenes = updated;
+    }
+    matched.then_some(changed)
+}
+
 fn apply_scene_layout(
     scenes: &mut Vec<SceneSegment>,
     ranges: &[(f64, f64)],
@@ -278,6 +353,8 @@ fn apply_scene_layout(
             split_layout,
             camera_only_crop_zoom: (choice == StudioLayout::CameraOnly)
                 .then_some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM),
+            camera_color_correction: (choice == StudioLayout::CameraOnly)
+                .then_some(ColorCorrection::default()),
             transition_in: 0.0,
             transition_out: 0.0,
         });
@@ -321,6 +398,36 @@ fn set_camera_framing(camera: &mut Camera, shape: CameraShape, ratio: Option<XY<
 }
 
 impl EditorWindow {
+    pub(crate) fn camera_scene_edit_ranges(&self) -> Vec<(f64, f64)> {
+        let Some(timeline) = self.project.timeline.as_ref() else {
+            return Vec::new();
+        };
+        camera_scene_ranges(
+            self.selection(),
+            &editor_timeline::clip_output_ranges(timeline),
+            self.playhead_time(),
+            self.total_duration(),
+        )
+    }
+
+    pub(crate) fn camera_only_scene_for_edit_ranges(
+        &self,
+        ranges: &[(f64, f64)],
+    ) -> Option<&SceneSegment> {
+        let timeline = self.project.timeline.as_ref()?;
+        let time = camera_scene_time(self.playhead_time(), self.total_duration());
+        let scenes = timeline.scene_segments.iter().filter(|scene| {
+            matches!(scene.mode, SceneMode::CameraOnly)
+                && ranges
+                    .iter()
+                    .any(|&(start, end)| scene.start < end && scene.end > start)
+        });
+        scenes
+            .clone()
+            .find(|scene| scene.start <= time && time < scene.end)
+            .or_else(|| scenes.into_iter().next())
+    }
+
     pub(crate) fn camera_scene_index_at(&self, playhead: f64) -> Option<usize> {
         let timeline = self.project.timeline.as_ref()?;
         let end = self.total_duration();
@@ -913,6 +1020,7 @@ mod tests {
             mode,
             split_layout,
             camera_only_crop_zoom: None,
+            camera_color_correction: None,
             transition_in: 0.0,
             transition_out: 0.0,
         };
@@ -1001,6 +1109,10 @@ mod tests {
             scenes[1].camera_only_crop_zoom,
             Some(cap_project::DEFAULT_CAMERA_ONLY_CROP_ZOOM)
         );
+        assert_eq!(
+            scenes[1].camera_color_correction,
+            Some(ColorCorrection::default())
+        );
         assert!(matches!(scenes[2].mode, SceneMode::Floating));
         assert!(
             scenes[2]
@@ -1012,6 +1124,50 @@ mod tests {
             &[(0.0, 4.0)],
             StudioLayout::CameraOnly
         ));
+    }
+
+    #[test]
+    fn camera_color_correction_edit_only_changes_the_selected_part_of_a_scene() {
+        let inherited = ColorCorrection::cinematic();
+        let manually_selected = ColorCorrection::default();
+        let mut scenes = vec![SceneSegment {
+            start: 0.0,
+            end: 10.0,
+            mode: SceneMode::CameraOnly,
+            camera_color_correction: None,
+            ..make_default_scene()
+        }];
+
+        assert_eq!(
+            edit_camera_only_color_correction_ranges(
+                &mut scenes,
+                &[(0.0, 4.0)],
+                &inherited,
+                |grade| {
+                    *grade = manually_selected.clone();
+                    true
+                },
+            ),
+            Some(true)
+        );
+        assert_eq!(scenes.len(), 2);
+        assert_eq!((scenes[0].start, scenes[0].end), (0.0, 4.0));
+        assert_eq!(
+            scenes[0].camera_color_correction,
+            Some(manually_selected.clone())
+        );
+        assert_eq!((scenes[1].start, scenes[1].end), (4.0, 10.0));
+        assert!(scenes[1].camera_color_correction.is_none());
+        assert_eq!(
+            edit_camera_only_color_correction_ranges(
+                &mut scenes,
+                &[(0.0, 4.0)],
+                &inherited,
+                |grade| *grade != manually_selected,
+            ),
+            Some(false)
+        );
+        assert_eq!(scenes.len(), 2);
     }
 
     #[test]
@@ -1054,6 +1210,7 @@ mod tests {
             mode: SceneMode::Default,
             split_layout: None,
             camera_only_crop_zoom: None,
+            camera_color_correction: None,
             transition_in: 0.0,
             transition_out: 0.0,
         }

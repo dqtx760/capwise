@@ -3011,6 +3011,7 @@ prompt = "Add cinematic 3D shots to your recording"
 
 [editor.window.clip_menu]
 more = "More settings"
+settings = "Clip settings"
 audio = { text = "Audio", context = "Section heading for the selected clip's settings." }
 delete = "Delete clip"
 delete_only_clip = "Can't delete the only clip"

@@ -2970,6 +2970,7 @@ prompt = "Añade tomas 3D cinematográficas a tu grabación"
 
 [editor.window.clip_menu]
 more = "Más ajustes"
+settings = "Ajustes del clip"
 audio = "AUDIO"
 delete = "Eliminar clip"
 delete_only_clip = "No se puede eliminar el único clip"

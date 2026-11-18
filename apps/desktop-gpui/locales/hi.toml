@@ -2970,6 +2970,7 @@ prompt = "अपनी रिकॉर्डिंग में सिनेम�
 
 [editor.window.clip_menu]
 more = "और सेटिंग्स"
+settings = "क्लिप सेटिंग्स"
 audio = "ऑडियो"
 delete = "क्लिप हटाएँ"
 delete_only_clip = "इकलौती क्लिप नहीं हटाई जा सकती"

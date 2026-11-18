@@ -4562,8 +4562,8 @@ impl EditorWindow {
         // **everything else through**, which is what the source does: the
         // dialog is a Kobalte modal but `useEditorShortcuts` and the
         // timeline's own listener are both bound on `document`, and Kobalte
-        // does not stop key events reaching them. So Space still plays, `S`
-        // still toggles the scissors and Backspace still deletes the timeline
+        // does not stop key events reaching them. So Space still plays and
+        // Backspace still deletes the timeline
         // selection with the cropper open. See the README.
         if self.crop.is_some() {
             // gpui delivers AppKit's key repeat; the cropper's own rAF ticker
@@ -4931,9 +4931,6 @@ impl EditorWindow {
                     self.delete_selection(window, cx);
                 }
             }
-            // `S` toggles the scissors (`Player.tsx:246-254`) and `C` performs
-            // the cut (`TL/index.tsx:1007-1013`) -- two different keys, and
-            // two different listeners in the source.
             "k" | "[" | "]"
                 if !keystroke.modifiers.modified()
                     && self.keyframe_shortcut(keystroke.key.as_str(), window, cx) =>
@@ -4947,9 +4944,22 @@ impl EditorWindow {
                     window.refresh();
                 }
             }
-            "s" => {
+            "q" | "w" | "s"
+                if !event.is_held
+                    && !keystroke.modifiers.function
+                    && self.crop.is_none()
+                    && self.drag.is_none()
+                    && !self.has_open_menu() =>
+            {
                 cx.stop_propagation();
-                self.toggle_split_mode(cx);
+                match keystroke.key.as_str() {
+                    "q" => self.ripple_trim_at_playhead(edits::RippleTrim::Head, window, cx),
+                    "w" => self.ripple_trim_at_playhead(edits::RippleTrim::Tail, window, cx),
+                    _ => {
+                        self.view.preview_time = None;
+                        self.split_at_time(self.playhead, window, cx);
+                    }
+                }
                 window.refresh();
             }
             "c" => {
@@ -5426,6 +5436,7 @@ impl EditorWindow {
             self.sidebar.menu = None;
             dismiss_indexed_sidebar_menu(&mut self.sidebar.menu);
             self.sidebar.style_target = None;
+            self.sidebar.clip_camera_controls = false;
             if !keep_scroll {
                 self.sidebar.scroll.set_offset(gpui::point(px(0.), px(0.)));
             }
@@ -7673,6 +7684,13 @@ impl EditorWindow {
             );
             self.set_selection(selection, cx);
             self.seek_to_time(drag.press_time, cx);
+            if drag.track == TrackKind::Clip
+                && !drag.shift
+                && !drag.multi
+                && self.clip_has_camera(drag.index)
+            {
+                self.reveal_clip_camera_controls(cx);
+            }
         }
 
         if let DragKind::Keyframe { key, .. } = drag.kind {
@@ -8099,7 +8117,10 @@ impl EditorWindow {
     /// `previewTime ?? playbackTime`. Works while playing, which is why it
     /// falls back to the playhead.
     fn split_at_playhead(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let time = self.view.preview_time.unwrap_or(self.playhead);
+        self.split_at_time(self.view.preview_time.unwrap_or(self.playhead), window, cx);
+    }
+
+    fn split_at_time(&mut self, time: f64, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(selection) = self.selection.clone()
             && matches!(selection.track, TrackKind::Style | TrackKind::Image)
             && selection.indices.len() == 1
@@ -8152,6 +8173,30 @@ impl EditorWindow {
         }
     }
 
+    fn ripple_trim_at_playhead(
+        &mut self,
+        direction: edits::RippleTrim,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let time = self.playhead;
+        let mut seam = None;
+        if self.edit(
+            |timeline| {
+                seam = edits::ripple_trim_at_playhead(timeline, time, direction);
+                seam.is_some()
+            },
+            window,
+            cx,
+        ) && let Some(seam) = seam
+        {
+            self.view.preview_time = None;
+            self.scene_preview_time = None;
+            self.seek_to_time(seam, cx);
+            self.note_edit("ripple-trim", Some(TrackKind::Clip));
+        }
+    }
+
     /// `Cmd/Ctrl+A` (`TL/index.tsx:1019-1045`).
     fn select_all_on_track(&mut self, cx: &mut Context<Self>) {
         let Some(timeline) = self.project.timeline.as_ref() else {
@@ -8168,8 +8213,7 @@ impl EditorWindow {
         }
     }
 
-    /// The scissors toggle -- `S` and the transport button
-    /// (`Player.tsx:246-254, 409-427`).
+    /// The transport button toggles the scissors for pointer cuts.
     fn toggle_split_mode(&mut self, cx: &mut Context<Self>) {
         self.split_mode = !self.split_mode;
         if !self.split_mode {
@@ -9942,6 +9986,29 @@ impl EditorWindow {
         self.open_clip_menu_at(index, origin, window, cx);
     }
 
+    fn clip_has_camera(&self, index: usize) -> bool {
+        let Some(clip) = self
+            .project
+            .timeline
+            .as_ref()
+            .and_then(|timeline| timeline.segments.get(index))
+        else {
+            return false;
+        };
+        self.summary()
+            .is_some_and(|summary| summary.display_is_camera)
+            || self
+                .instance
+                .as_ref()
+                .and_then(|instance| {
+                    instance
+                        .recordings
+                        .segments
+                        .get(clip.recording_clip as usize)
+                })
+                .is_some_and(|recording| recording.camera.is_some())
+    }
+
     /// Opens (or re-anchors) the clip menu at `origin`: the cog's press, or a
     /// right-click anywhere on the clip.
     fn open_clip_menu_at(
@@ -10886,6 +10953,32 @@ impl EditorWindow {
                             this.start_clip_rename(index, window, cx);
                         }))
                         .into_any_element(),
+                    })
+                    .when(self.clip_has_camera(index), |column| {
+                        column.child(
+                            clip_menu_row(
+                                &theme,
+                                "clip-menu-settings",
+                                "icons/settings.svg",
+                                tr::editor::window::clip_menu::settings(),
+                                ClipMenuTrailing::None,
+                                true,
+                                false,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.clip_speed = None;
+                                    this.set_selection(
+                                        Some(Selection::single(TrackKind::Clip, index)),
+                                        cx,
+                                    );
+                                    this.sidebar.clip_camera_controls = false;
+                                    this.sidebar.scroll.set_offset(point(px(0.), px(0.)));
+                                    this.focus_root(window, cx);
+                                    cx.notify();
+                                },
+                            )),
+                        )
                     })
                     .when(index > 0 && can_transition, |column| {
                         column.child(
@@ -13101,7 +13194,6 @@ impl EditorWindow {
                                     &theme,
                                     tr::editor::window::transport::split_tooltip(),
                                 )
-                                .keys(["S"])
                                 .view(cx)
                             })
                             .child(

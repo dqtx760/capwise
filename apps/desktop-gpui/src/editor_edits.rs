@@ -2141,6 +2141,47 @@ pub enum RangeCut {
 /// would leave one takes it too, so playback never seeks into a sliver.
 pub const MIN_CLIP_PIECE: f64 = 1.0 / 60.0;
 
+#[derive(Clone, Copy)]
+pub(crate) enum RippleTrim {
+    Head,
+    Tail,
+}
+
+pub(crate) fn ripple_trim_at_playhead(
+    timeline: &mut TimelineConfiguration,
+    output_time: f64,
+    direction: RippleTrim,
+) -> Option<f64> {
+    let holds = timeline.hold_windows();
+    if holds
+        .iter()
+        .any(|&(start, end)| output_time >= start && output_time < end)
+    {
+        return None;
+    }
+    let time = output_time - held_time_before(&holds, output_time);
+    let (index, offset, local, duration) = timeline
+        .segments
+        .iter()
+        .zip(editor_timeline::clip_timeline_offsets(timeline))
+        .enumerate()
+        .rev()
+        .find_map(|(index, (segment, offset))| {
+            let local = time - offset;
+            let duration = segment.duration();
+            (local >= 0.0 && local < duration).then_some((index, offset, local, duration))
+        })?;
+    if local < MIN_CLIP_PIECE || duration - local < MIN_CLIP_PIECE {
+        return None;
+    }
+
+    let (start, end, seam) = match direction {
+        RippleTrim::Head => (0.0, local, effective_to_output_end(&holds, offset)),
+        RippleTrim::Tail => (local, duration, output_time),
+    };
+    (cut_clip_range(timeline, index, start, end) == RangeCut::Applied).then_some(seam)
+}
+
 pub fn cut_clip_range(
     timeline: &mut TimelineConfiguration,
     index: usize,
@@ -2493,6 +2534,7 @@ pub fn default_scene_segment(start: f64, end: f64) -> SceneSegment {
         mode: SceneMode::CameraOnly,
         split_layout: None,
         camera_only_crop_zoom: None,
+        camera_color_correction: Some(cap_project::ColorCorrection::default()),
         transition_in: 0.3,
         transition_out: 0.3,
     }
@@ -4228,6 +4270,59 @@ mod tests {
                 "zoomSegments": []
             }
         }))
+    }
+
+    #[test]
+    fn ripple_trim_cuts_only_the_playhead_clip_and_moves_later_tracks() {
+        for (direction, source_range, seam) in [
+            (RippleTrim::Head, (4.0, 8.0), 10.0),
+            (RippleTrim::Tail, (0.0, 4.0), 12.0),
+        ] {
+            let mut project = two_clip_config();
+            let timeline = project.timeline.as_mut().unwrap();
+            timeline.segments[1].timescale = 2.0;
+            let mut later_clip = timeline.segments[0].clone();
+            later_clip.recording_clip = 2;
+            timeline.segments.push(later_clip);
+            timeline.scene_segments = serde_json::from_value(serde_json::json!([
+                { "start": 15.0, "end": 18.0, "mode": "cameraOnly" }
+            ]))
+            .unwrap();
+            timeline.caption_segments = serde_json::from_value(serde_json::json!([
+                { "id": "later", "start": 16.0, "end": 17.0, "text": "Later caption" }
+            ]))
+            .unwrap();
+
+            assert_eq!(
+                ripple_trim_at_playhead(timeline, 12.0, direction),
+                Some(seam)
+            );
+            assert_eq!(timeline.segments.len(), 3);
+            assert_eq!(timeline.segments[0].duration(), 10.0);
+            assert_eq!(
+                (timeline.segments[1].start, timeline.segments[1].end),
+                source_range
+            );
+            assert_eq!(timeline.segments[2].duration(), 10.0);
+            assert_eq!(timeline.duration(), 22.0);
+            let scene = &timeline.scene_segments[0];
+            assert_eq!((scene.start, scene.end), (13.0, 16.0));
+            let caption = &timeline.caption_segments[0];
+            assert_eq!((caption.start, caption.end), (14.0, 15.0));
+        }
+    }
+
+    #[test]
+    fn ripple_trim_at_a_clip_boundary_leaves_both_clips_intact() {
+        let mut project = two_clip_config();
+        let timeline = project.timeline.as_mut().unwrap();
+        for direction in [RippleTrim::Head, RippleTrim::Tail] {
+            for boundary in [0.0, 10.0, 18.0] {
+                assert_eq!(ripple_trim_at_playhead(timeline, boundary, direction), None);
+            }
+        }
+        assert_eq!(timeline.segments.len(), 2);
+        assert_eq!(timeline.duration(), 18.0);
     }
 
     #[test]
